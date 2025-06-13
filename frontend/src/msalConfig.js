@@ -8,7 +8,7 @@ export const msalConfig = {
     authority: "https://login.microsoftonline.com/3630ff06-11ea-4763-960a-fc74e8780220",
 
     // Lascia “/” → Static Web Apps aggiunge in automatico il dominio
-    redirectUri: "https://mango-ocean-06166b203.6.azurestaticapps.net/*"
+    redirectUri: "https://mango-ocean-06166b203.6.azurestaticapps.net/"
   },
   cache: { cacheLocation: "sessionStorage" }   // default ok
 };
