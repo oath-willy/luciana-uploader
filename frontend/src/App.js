@@ -9,6 +9,6 @@ async function handleDrop(e) {
     body: file
   });
 
-  if (res.ok) setStatus("✅ Caricato con successo");
-  else        setStatus("❌ Errore: " + (await res.text()));
+  if (res.ok) setStatus("Caricato con successo");
+  else        setStatus("Errore: " + (await res.text()));
 }
