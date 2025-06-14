@@ -1,16 +1,14 @@
 {
-  "name": "",
+  "name": "luciana-api",
   "version": "1.0.0",
-  "description": "",
-  "main": "src/functions/*.js",
+  "description": "Azure Functions per progetto Luciana",
+  "main": "index.js",
   "scripts": {
     "start": "func start",
     "test": "echo \"No tests yet...\""
   },
   "dependencies": {
-    "@azure/functions": "^4.0.0"
-  },
-  "devDependencies": {
-    "azure-functions-core-tools": "^4.x"
+    "@azure/functions": "^4.0.0",
+    "@azure/storage-file-share": "^12.15.0"
   }
 }
