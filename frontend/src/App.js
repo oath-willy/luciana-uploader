@@ -15,7 +15,7 @@ function App() {
     });
 
     if (res.ok) setStatus("✅ Caricato con successo");
-    else        setStatus("❌ Errore: " + (await res.text()));
+    else setStatus(`❌ Errore ${res.status}: ${await res.text()}`)
   }
 
   return (
