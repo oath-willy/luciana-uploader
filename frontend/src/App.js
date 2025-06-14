@@ -1,55 +1,69 @@
-import React from "react";
-import { MsalProvider, useMsal } from "@azure/msal-react";
-import { PublicClientApplication } from "@azure/msal-browser";
+// frontend/src/App.js
+import React, { useState } from "react";
 import DragAndDrop from "./DragAndDrop";
-
-const msalConfig = {
-  auth: {
-    clientId: "95622910-72b1-4eeb-98ea-fa20efbc5673",
-    authority: "https://login.microsoftonline.com/3630ff06-11ea-4763-960a-fc74e8780220",
-    redirectUri: "https://mango-ocean-06166b203.6.azurestaticapps.net",
-  },
-  cache: {
-    cacheLocation: "localStorage",
-    storeAuthStateInCookie: false,
-  },
-};
+import { PublicClientApplication } from "@azure/msal-browser";
+import { msalConfig } from "./msalConfig";
 
 const msalInstance = new PublicClientApplication(msalConfig);
 
-const AppContent = () => {
-  const { instance, accounts } = useMsal();
+function App() {
+  const [account, setAccount] = useState(null);
+  const [status, setStatus] = useState("");
+  const [file, setFile] = useState(null);
 
-  const handleLogin = async () => {
+  const signIn = async () => {
     try {
-      await instance.loginRedirect();
-    } catch (error) {
-      console.error("Login error:", error);
+      const loginResponse = await msalInstance.loginPopup();
+      setAccount(loginResponse.account);
+    } catch (err) {
+      console.error("Login failed", err);
     }
   };
 
-  if (accounts.length === 0) {
+  const handleUpload = async () => {
+    if (!file) {
+      setStatus("❌ Nessun file selezionato.");
+      return;
+    }
+
+    try {
+      setStatus("⏳ Caricamento...");
+
+      const res = await fetch(`/api/getSasToken?filename=${file.name}`);
+      const { sasUrl } = await res.json();
+
+      await fetch(sasUrl, {
+        method: "PUT",
+        headers: {
+          "x-ms-blob-type": "BlockBlob",
+        },
+        body: file,
+      });
+
+      setStatus("✅ Caricato con successo");
+    } catch (err) {
+      console.error(err);
+      setStatus("❌ Errore: " + err.message);
+    }
+  };
+
+  if (!account) {
     return (
-      <div style={{ padding: "2rem", textAlign: "center" }}>
-        <h2>🔐 Accesso richiesto</h2>
-        <button onClick={handleLogin}>Accedi con Microsoft</button>
+      <div style={{ padding: "2rem" }}>
+        <button onClick={signIn}>🔐 Accedi con Microsoft</button>
       </div>
     );
   }
 
   return (
     <div style={{ padding: "2rem" }}>
-      <p>✅ Benvenuto, {accounts[0].username}</p>
-      <DragAndDrop />
+      <h2>Ciao, {account.username} 👋</h2>
+      <DragAndDrop onFileSelected={setFile} status={status} />
+      <br />
+      <button onClick={handleUpload} disabled={!file}>
+        🚀 Carica File
+      </button>
     </div>
-  );
-};
-
-function App() {
-  return (
-    <MsalProvider instance={msalInstance}>
-      <AppContent />
-    </MsalProvider>
   );
 }
 
