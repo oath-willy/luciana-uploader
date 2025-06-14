@@ -4,7 +4,7 @@ import DragAndDrop from "./DragAndDrop";
 import { useMsal } from "@azure/msal-react";
 
 function App() {
-  const { instance, accounts } = useMsal();
+  const { accounts } = useMsal();
   const [file, setFile] = useState(null);
   const [status, setStatus] = useState("");
 
