@@ -18,7 +18,7 @@ module.exports = async function (context, req) {
     containerName,
     blobName,
     permissions: BlobSASPermissions.parse("cw"),
-    startsOn: new Date(),
+    startsOn: new Date(new Date().valueOf() - 5 * 60 * 1000), // 5 minuti fa
     expiresOn: new Date(new Date().valueOf() + 3600 * 1000),
     protocol: SASProtocol.Https,
   }, credential).toString();
