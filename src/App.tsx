@@ -5,8 +5,11 @@ import { PublicClientApplication } from "@azure/msal-browser";
 import { msalConfig } from "./auth/msalConfig";
 import { LoginPage } from "./pages/LoginPage";
 import { UploadPage } from "./pages/UploadPage";
+import { MantineProvider } from "@mantine/core";
 
 const msalInstance = new PublicClientApplication(msalConfig);
+
+console.log("App loaded");
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const isAuthenticated = useIsAuthenticated();
@@ -31,9 +34,11 @@ const AppRoutes = () => (
 function App() {
   return (
     <MsalProvider instance={msalInstance}>
-      <Router>
-        <AppRoutes />
-      </Router>
+      <MantineProvider>
+        <Router>
+          <AppRoutes />
+        </Router>
+      </MantineProvider>
     </MsalProvider>
   );
 }

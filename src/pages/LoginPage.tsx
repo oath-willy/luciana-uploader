@@ -9,6 +9,8 @@ export const LoginPage = () => {
     instance.loginRedirect(loginRequest);
   };
 
+  console.log("LoginPage rendering");
+
   return (
     <Container size="sm" style={{ marginTop: 100 }}>
       <Title order={2} style={{ textAlign: "center" }} mb="lg">
