@@ -10,8 +10,19 @@ import "./index.css";
 const msalInstance = new PublicClientApplication(msalConfig);
 
 async function main() {
-  await msalInstance.initialize(); // ✅ necessaria
-  await msalInstance.handleRedirectPromise(); // ✅ intercetta il redirect
+  await msalInstance.initialize();
+
+  const response = await msalInstance.handleRedirectPromise();
+
+  if (response) {
+    console.log("✅ MSAL ha gestito il redirect");
+    msalInstance.setActiveAccount(response.account);
+    // ✅ Naviga esplicitamente a /upload
+    window.location.replace("/upload");
+    return; // blocca il render finché non sei su /upload
+  } else {
+    console.log("ℹ️ Nessun redirect da gestire");
+  }
 
   const root = ReactDOM.createRoot(
     document.getElementById("root") as HTMLElement
