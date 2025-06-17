@@ -2,9 +2,9 @@ import { Configuration } from "@azure/msal-browser";
 
 export const msalConfig: Configuration = {
   auth: {
-    clientId: "<INSERISCI_CLIENT_ID>",
-    authority: "https://login.microsoftonline.com/<INSERISCI_TENANT_ID>",
-    redirectUri: "http://localhost:3000",
+    clientId: "95622910-72b1-4eeb-98ea-fa20efbc5673",
+    authority: "https://login.microsoftonline.com/3630ff06-11ea-4763-960a-fc74e8780220",
+    redirectUri: "https://mango-ocean-06166b203.6.azurestaticapps.net",
   },
   cache: {
     cacheLocation: "localStorage",
