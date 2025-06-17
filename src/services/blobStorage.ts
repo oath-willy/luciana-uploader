@@ -1,9 +1,4 @@
-import {
-  BlobServiceClient,
-  StorageSharedKeyCredential,
-  AnonymousCredential,
-  newPipeline,
-} from "@azure/storage-blob";
+import { BlobServiceClient } from "@azure/storage-blob";
 import { TokenCredential } from "@azure/core-auth";
 
 const accountName = "lucianafilestg01";
