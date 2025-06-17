@@ -1,3 +1,4 @@
+import React from "react"; // <--- AGGIUNGI QUESTO
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import { MsalProvider, useIsAuthenticated } from "@azure/msal-react";
 import { PublicClientApplication } from "@azure/msal-browser";
@@ -7,9 +8,9 @@ import { UploadPage } from "./pages/UploadPage";
 
 const msalInstance = new PublicClientApplication(msalConfig);
 
-const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
+const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const isAuthenticated = useIsAuthenticated();
-  return isAuthenticated ? children : <Navigate to="/login" replace />;
+  return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
 };
 
 const AppRoutes = () => (

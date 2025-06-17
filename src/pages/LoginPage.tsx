@@ -11,7 +11,7 @@ export const LoginPage = () => {
 
   return (
     <Container size="sm" style={{ marginTop: 100 }}>
-      <Title align="center" order={2} mb="lg">
+      <Title order={2} style={{ textAlign: "center" }} mb="lg">
         Benvenuto nel progetto Luciana
       </Title>
       <Button fullWidth size="md" onClick={handleLogin}>
