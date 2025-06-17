@@ -9,10 +9,9 @@ import "./index.css";
 
 const msalInstance = new PublicClientApplication(msalConfig);
 
-// Avvia l'app solo dopo aver inizializzato MSAL e gestito il redirect
 async function main() {
-  await msalInstance.initialize(); // ✅ inizializza correttamente
-  await msalInstance.handleRedirectPromise(); // ✅ gestisce eventuale login
+  await msalInstance.initialize(); // ✅ necessaria
+  await msalInstance.handleRedirectPromise(); // ✅ intercetta il redirect
 
   const root = ReactDOM.createRoot(
     document.getElementById("root") as HTMLElement
