@@ -7,11 +7,13 @@ import { MsalProvider } from "@azure/msal-react";
 import { msalConfig } from "./auth/msalConfig";
 import "./index.css";
 
-// Inizializza MSAL
 const msalInstance = new PublicClientApplication(msalConfig);
 
-// Gestisce il redirect dopo il login Microsoft
-msalInstance.handleRedirectPromise().then(() => {
+// Avvia l'app solo dopo aver inizializzato MSAL e gestito il redirect
+async function main() {
+  await msalInstance.initialize(); // ✅ inizializza correttamente
+  await msalInstance.handleRedirectPromise(); // ✅ gestisce eventuale login
+
   const root = ReactDOM.createRoot(
     document.getElementById("root") as HTMLElement
   );
@@ -23,6 +25,8 @@ msalInstance.handleRedirectPromise().then(() => {
       </MsalProvider>
     </React.StrictMode>
   );
-});
+}
+
+main();
 
 reportWebVitals();
