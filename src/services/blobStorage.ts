@@ -6,8 +6,8 @@ import {
 } from "@azure/storage-blob";
 import { TokenCredential } from "@azure/core-auth";
 
-const accountName = "luciana-bronze-stg01";
-const containerName = "bronze";
+const accountName = "lucianafilestg01";
+const containerName = "uploaded";
 
 export async function uploadBlobToContainer(file: File, accessToken: string) {
   const credential: TokenCredential = {
