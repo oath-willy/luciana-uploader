@@ -50,5 +50,4 @@ jobs:
           resourceGroup: luciana_resource_group
           imageToDeploy: lucianaacr01.azurecr.io/luciana-backend:latest
           registryUrl: lucianaacr01.azurecr.io
-          acrName: lucianaacr01
           targetPort: 8000
