@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'backend/**'
+      - '.github/workflows/backend-deploy.yml'
 
 permissions:
   id-token: write
@@ -30,4 +31,5 @@ jobs:
           containerAppName: luciana-backend
           resourceGroup: luciana_resource_group
           appSourcePath: ./backend
+          acrName: lucianaacr01
           targetPort: 8000
