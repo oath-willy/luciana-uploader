@@ -1,4 +1,4 @@
-name: Deploy backend to Azure Container App
+name: Build and Deploy Backend to Azure Container App
 
 on:
   push:
@@ -13,11 +13,10 @@ permissions:
   contents: read
 
 jobs:
-  deploy:
+  build-and-deploy:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repo
+      - name: Checkout code
         uses: actions/checkout@v3
 
       - name: Azure Login
@@ -25,9 +24,16 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Deploy to Container Apps
-        uses: azure/container-apps-deploy-action@v2
-        with:
-          containerAppName: luciana-backend
-          resourceGroup: luciana_resource_group
-          imageToDeploy: lucianaacr01.azurecr.io/luciana-backend:latest
+      - name: Build image and push to ACR
+        run: |
+          az acr build \
+            --registry lucianaacr01 \
+            --image luciana-backend:latest \
+            ./backend
+
+      - name: Deploy to Azure Container App
+        run: |
+          az containerapp update \
+            --name luciana-backend \
+            --resource-group luciana_resource_group \
+            --image lucianaacr01.azurecr.io/luciana-backend:latest
