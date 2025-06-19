@@ -4,10 +4,17 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/azure-static-web-apps-*.yml'
+
   pull_request:
     types: [opened, synchronize, reopened, closed]
     branches:
       - main
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/azure-static-web-apps-*.yml'
 
 jobs:
   build_and_deploy_job:
@@ -40,7 +47,7 @@ jobs:
           action: "upload"
           ###### Repository/Build Configurations - These values can be configured to match your app requirements. ######
           # For more information regarding Static Web App workflow configurations, please visit: https://aka.ms/swaworkflowconfig
-          app_location: "/" # App source code path
+          app_location: "frontend" # Cambiato: perché ora hai il frontend in /frontend
           api_location: "" # Api source code path - optional
           output_location: "build" # Built app content directory - optional
           github_id_token: ${{ steps.idtoken.outputs.result }}
