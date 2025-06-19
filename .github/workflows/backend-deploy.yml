@@ -26,10 +26,10 @@ jobs:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Deploy to Container Apps
-        uses: azure/container-apps-deploy-action@v1
+        uses: azure/container-apps-deploy-action@v2
         with:
           containerAppName: luciana-backend
           resourceGroup: luciana_resource_group
-          appSourcePath: ./backend
-          acrName: lucianaacr01
+          imageToDeploy: lucianaacr01.azurecr.io/luciana-backend:latest
+          registryUrl: lucianaacr01.azurecr.io
           targetPort: 8000
