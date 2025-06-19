@@ -6,7 +6,8 @@ function App() {
 
   useEffect(() => {
     // Cambia questa URL se il backend è su una porta diversa
-    fetch('http://localhost:8000/ping')
+    //fetch('http://localhost:8000/ping')
+    fetch(`${process.env.REACT_APP_BACKEND_URL}/ping`)
       .then(response => response.json())
       .then(data => {
         setBackendResponse(data.message);
