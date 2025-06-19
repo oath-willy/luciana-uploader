@@ -1,0 +1,32 @@
+name: Deploy backend to Azure Container App
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build and push Docker image
+        uses: azure/container-apps-deploy-action@v1
+        with:
+          app-name: luciana-backend
+          resource-group: luciana_resource_group
+          image-to-build: ghcr.io/${{ github.repository }}/luciana-backend:latest
+          dockerfile: ./backend/Dockerfile
+          target-port: 8000
