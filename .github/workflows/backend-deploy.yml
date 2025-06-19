@@ -1,7 +1,3 @@
-permissions:
-  id-token: write
-  contents: read
-
 name: Deploy backend to Azure Container App
 
 on:
@@ -10,7 +6,6 @@ on:
       - main
     paths:
       - 'backend/**'
-      - '.github/workflows/backend-deploy.yml'
 
 jobs:
   deploy:
@@ -18,17 +13,18 @@ jobs:
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Login to Azure
         uses: azure/login@v1
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Build and push Docker image
-        uses: azure/container-apps-deploy-action@v1
+      - name: Deploy to Container App
+        uses: azure/container-apps-deploy-action@v2
         with:
           containerAppName: luciana-backend
           resourceGroup: luciana_resource_group
