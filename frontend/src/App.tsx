@@ -1,24 +1,26 @@
-import React from 'react';
-import logo from './logo.svg';
+import React, { useEffect, useState } from 'react';
 import './App.css';
 
 function App() {
+  const [backendResponse, setBackendResponse] = useState('');
+
+  useEffect(() => {
+    // Cambia questa URL se il backend è su una porta diversa
+    fetch('http://localhost:8000/ping')
+      .then(response => response.json())
+      .then(data => {
+        setBackendResponse(data.message);
+      })
+      .catch(error => {
+        console.error('Errore chiamata backend:', error);
+        setBackendResponse('Errore chiamata backend');
+      });
+  }, []);
+
   return (
     <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.tsx</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
+      <h1>Test comunicazione Frontend - Backend</h1>
+      <p>Risposta backend: {backendResponse}</p>
     </div>
   );
 }
