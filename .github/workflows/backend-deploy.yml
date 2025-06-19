@@ -6,7 +6,10 @@ on:
       - main
     paths:
       - 'backend/**'
-      - '.github/workflows/backend-deploy.yml'
+
+permissions:
+  id-token: write
+  contents: read
 
 jobs:
   deploy:
@@ -21,11 +24,10 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Deploy to Azure Container App
-        uses: azure/container-apps-deploy-action@v2
+      - name: Deploy to Container Apps
+        uses: azure/container-apps-deploy-action@v1
         with:
           containerAppName: luciana-backend
           resourceGroup: luciana_resource_group
-          imageToBuild: ghcr.io/${{ github.repository }}/luciana-backend:latest
-          dockerfilePath: ./backend/Dockerfile
+          appSourcePath: ./backend
           targetPort: 8000
