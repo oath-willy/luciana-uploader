@@ -33,3 +33,4 @@ jobs:
           imageToDeploy: lucianaacr01.azurecr.io/luciana-backend:latest
           registryUrl: lucianaacr01.azurecr.io
           targetPort: 8000
+          useManagedIdentity: true
