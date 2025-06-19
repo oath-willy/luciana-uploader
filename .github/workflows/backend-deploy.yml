@@ -1,3 +1,7 @@
+permissions:
+  id-token: write
+  contents: read
+
 name: Deploy backend to Azure Container App
 
 on:
@@ -26,8 +30,8 @@ jobs:
       - name: Build and push Docker image
         uses: azure/container-apps-deploy-action@v1
         with:
-          app-name: luciana-backend
-          resource-group: luciana_resource_group
-          image-to-build: ghcr.io/${{ github.repository }}/luciana-backend:latest
-          dockerfile: ./backend/Dockerfile
-          target-port: 8000
+          containerAppName: luciana-backend
+          resourceGroup: luciana_resource_group
+          imageToBuild: ghcr.io/${{ github.repository }}/luciana-backend:latest
+          dockerfilePath: ./backend/Dockerfile
+          targetPort: 8000
