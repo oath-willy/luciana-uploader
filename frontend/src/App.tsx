@@ -7,7 +7,7 @@ function App() {
   const [uploadStatus, setUploadStatus] = useState('');
 
   useEffect(() => {
-    fetch(`${process.env.REACT_APP_BACKEND_URL}/ping`)
+    fetch(`https://luciana-backend.azurewebsites.net/ping`)
       .then(response => response.json())
       .then(data => {
         setBackendResponse(data.message);
