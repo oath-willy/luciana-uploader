@@ -3,10 +3,10 @@ import './App.css';
 
 function App() {
   const [backendResponse, setBackendResponse] = useState('');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploadStatus, setUploadStatus] = useState('');
 
   useEffect(() => {
-    // Cambia questa URL se il backend è su una porta diversa
-    //fetch('http://localhost:8000/ping')
     fetch(`${process.env.REACT_APP_BACKEND_URL}/ping`)
       .then(response => response.json())
       .then(data => {
@@ -18,10 +18,49 @@ function App() {
       });
   }, []);
 
+  const handleUpload = () => {
+    if (!selectedFile) {
+      alert("Seleziona un file prima di caricare");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", selectedFile);
+
+    setUploadStatus("Caricamento in corso...");
+
+    fetch(`${process.env.REACT_APP_BACKEND_URL}/upload`, {
+      method: "POST",
+      body: formData,
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.status === "success") {
+          setUploadStatus(`✅ File caricato: ${data.url}`);
+        } else {
+          setUploadStatus(`❌ Errore: ${data.detail || 'upload fallito'}`);
+        }
+      })
+      .catch(err => {
+        console.error("Errore upload:", err);
+        setUploadStatus("❌ Errore durante l'upload");
+      });
+  };
+
   return (
     <div className="App">
       <h1>Test comunicazione Frontend - Backend</h1>
       <p>Risposta backend: {backendResponse}</p>
+
+      <h2>Upload file</h2>
+      <input
+        type="file"
+        onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+      />
+      <br /><br />
+      <button onClick={handleUpload}>Carica</button>
+
+      <p>{uploadStatus}</p>
     </div>
   );
 }
