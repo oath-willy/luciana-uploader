@@ -4,3 +4,4 @@ python-dotenv
 azure-storage-blob
 python-multipart
 aiohttp
+gunicorn
