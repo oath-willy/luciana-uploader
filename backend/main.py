@@ -17,7 +17,7 @@ app.add_middleware(
 # Test
 @app.get("/ping")
 def ping():
-    return {"message": "pong"}
+    return {"message": "stong"}
 
 # Registra rotte
 app.include_router(upload_router)
