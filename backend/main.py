@@ -20,7 +20,7 @@ def ping():
     return {"message": "stong"}
 
 # Include tutte le rotte
-app.include_router(router)
+app.include_router(router, prefix="/api")
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=int(os.getenv("PORT", 8080)))

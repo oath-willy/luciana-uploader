@@ -56,6 +56,11 @@ export default function FileTree() {
     fetch(`${process.env.REACT_APP_BACKEND_URL || ''}/api/container`)
       .then((res) => res.json())
       .then((data) => {
+        if (!data.files || !Array.isArray(data.files)) {
+          console.error("Dati inattesi dal backend:", data);
+          setTree([]);
+          return;
+        }
         const structured = buildTree(data.files);
         setTree(structured);
       })
