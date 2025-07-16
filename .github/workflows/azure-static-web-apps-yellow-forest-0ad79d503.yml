@@ -32,7 +32,6 @@ jobs:
 
       - name: Set REACT_APP_BACKEND_URL
         run: echo "REACT_APP_BACKEND_URL=https://luciana-backend.azurewebsites.net" >> $GITHUB_ENV
-        run: echo "VITE_API_BASE_URL=https://luciana-backend.azurewebsites.net" >> $GITHUB_ENV
 
       - name: Install OIDC Client from Core Package
         run: npm install @actions/core@1.6.0 @actions/http-client
