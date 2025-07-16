@@ -7,7 +7,7 @@ function App() {
   const [uploadStatus, setUploadStatus] = useState('');
 
   useEffect(() => {
-    fetch(`${process.env.REACT_APP_BACKEND_URL}/ping`)
+    fetch(`${process.env.BACKEND_URL}/ping`)
       .then(response => response.json())
       .then(data => {
         setBackendResponse(data.message);
@@ -29,7 +29,7 @@ function App() {
 
     setUploadStatus("Caricamento in corso...");
 
-    fetch(`${process.env.REACT_APP_BACKEND_URL}/upload`, {
+    fetch(`${process.env.BACKEND_URL}/upload`, {
       method: "POST",
       body: formData,
     })
