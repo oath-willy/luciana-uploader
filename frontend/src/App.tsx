@@ -50,7 +50,7 @@ function App() {
   return (
     <div className="App">
       <h1>Test comunicazione Frontend - Backend</h1>
-      <p>Check risposta backend: {backendResponse}</p>
+      <p>Risposta backend: {backendResponse}</p>
 
       <h2>Upload file</h2>
       <input
