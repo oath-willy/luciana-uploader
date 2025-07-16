@@ -6,10 +6,11 @@ import uvicorn
 
 app = FastAPI()
 
-# CORS (puoi restringere gli accessi in produzione)
+frontend_origin = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[frontend_origin],  # <-- ora valore esplicito
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
