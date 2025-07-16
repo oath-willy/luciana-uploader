@@ -48,4 +48,25 @@ export default function FileTree() {
 
   useEffect(() => {
     fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/api/container`)
-      .th
+      .then((res) => res.json())
+      .then((data) => {
+        const structured = buildTree(data.files);
+        setTree(structured);
+      })
+      .catch((err) => console.error('Errore caricamento:', err))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const renderNode = (node: FileNode, depth = 0) => (
+    <div key={node.name + depth} style={{ paddingLeft: depth * 20 }}>
+      {node.type === 'folder' ? '📁' : '📄'} {node.name}
+      {node.children?.map((child) => renderNode(child, depth + 1))}
+    </div>
+  );
+
+  return (
+    <div>
+      {loading ? <p>Caricamento...</p> : tree.map((node) => renderNode(node))}
+    </div>
+  );
+}

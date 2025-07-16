@@ -1,11 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from api.routes import router as upload_router  # o `from routes import ...` se non usi sottocartella
+from api.routes import router
 import os
+import uvicorn
 
 app = FastAPI()
 
-# CORS
+# CORS (puoi restringere gli accessi in produzione)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -14,14 +15,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Test
 @app.get("/ping")
 def ping():
     return {"message": "stong"}
 
-# Registra rotte
-app.include_router(upload_router)
+# Include tutte le rotte
+app.include_router(router)
 
-# ✅ Avvio solo quando eseguito direttamente (es. da Docker o Azure App Service)
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=int(os.getenv("PORT", 8080)))
