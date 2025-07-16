@@ -22,37 +22,37 @@ export default function FileTreeExplorer() {
   }, []);
 
   const toggle = (path: string) => {
-    setExpanded(prev => {
-      const newSet = new Set(prev);
-      newSet.has(path) ? newSet.delete(path) : newSet.add(path);
-      return newSet;
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      next.has(path) ? next.delete(path) : next.add(path);
+      return next;
     });
   };
 
-  const render = (node: FileNode, depth: number, path: string) => {
-    const fullPath = path ? `${path}/${node.name}` : node.name;
+  const render = (node: FileNode, depth: number, parentPath: string): JSX.Element => {
+    const fullPath = parentPath ? `${parentPath}/${node.name}` : node.name;
     const isExpanded = expanded.has(fullPath);
     const isFolder = node.type === 'folder';
 
     return (
       <div key={fullPath} style={{ paddingLeft: depth * 20 }}>
         {isFolder && (
-          <span style={{ cursor: 'pointer' }} onClick={() => toggle(fullPath)}>
+          <span
+            style={{ cursor: 'pointer', userSelect: 'none' }}
+            onClick={() => toggle(fullPath)}
+          >
             {isExpanded ? '🔽' : '▶️'}
           </span>
         )}{' '}
         {node.name}
-        {isExpanded &&
-          node.children?.map(child => render(child, depth + 1, fullPath))}
+        {isExpanded && node.children?.map((child) => render(child, depth + 1, fullPath))}
       </div>
     );
   };
 
   return (
     <div>
-      {loading ? <p>Caricamento...</p> : (
-        <FileTreeBase files={files} render={render} />
-      )}
+      {loading ? <p>Caricamento...</p> : <FileTreeBase files={files} render={render} />}
     </div>
   );
 }
