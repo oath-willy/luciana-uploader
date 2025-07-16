@@ -1,14 +1,19 @@
 import { useEffect, useState } from 'react';
 
-// Tipi
 type FileNode = {
   name: string;
   type: 'folder' | 'file';
   children?: FileNode[];
 };
 
+type InternalNode = {
+  name: string;
+  type: 'folder' | 'file';
+  children?: { [key: string]: InternalNode };
+};
+
 function buildTree(paths: string[]): FileNode[] {
-  const root: { [key: string]: FileNode } = {};
+  const root: { [key: string]: InternalNode } = {};
 
   for (const path of paths) {
     const parts = path.split('/');
@@ -20,26 +25,27 @@ function buildTree(paths: string[]): FileNode[] {
 
       if (!current[key]) {
         current[key] = {
-            name: part,
-            type: isFile ? 'file' : 'folder',
-            children: isFile ? undefined : [],
+          name: part,
+          type: isFile ? 'file' : 'folder',
+          ...(isFile ? {} : { children: {} }),
         };
-        }
+      }
 
       if (!isFile) {
-        current = current[key].children as { [key: string]: FileNode };
+        current = current[key].children!;
       }
     });
   }
 
-  function flatten(node: { [key: string]: FileNode }): FileNode[] {
+  function convert(node: { [key: string]: InternalNode }): FileNode[] {
     return Object.values(node).map((entry) => ({
-      ...entry,
-      children: entry.children ? flatten(entry.children) : undefined,
+      name: entry.name,
+      type: entry.type,
+      children: entry.children ? convert(entry.children) : undefined,
     }));
   }
 
-  return flatten(root);
+  return convert(root);
 }
 
 export default function FileTree() {
@@ -47,7 +53,7 @@ export default function FileTree() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`${import.meta.env.REACT_APP_BACKEND_URL || ''}/api/container`)
+    fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/api/container`)
       .then((res) => res.json())
       .then((data) => {
         const structured = buildTree(data.files);
