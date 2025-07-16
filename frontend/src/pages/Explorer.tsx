@@ -8,7 +8,7 @@ export default function Explorer() {
   const [loading, setLoading] = useState(true);
   const [params] = useSearchParams();
   const path = params.get("path"); // es: ?path=clienteA/gennaio
-  const mode = params.get("mode"); // es: ?mode=base
+  const mode = params.get("mode") ?? "explorer";
 
   useEffect(() => {
     fetch(`${process.env.REACT_APP_BACKEND_URL || ''}/api/container`)
