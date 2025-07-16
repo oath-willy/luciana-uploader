@@ -20,11 +20,11 @@ function buildTree(paths: string[]): FileNode[] {
 
       if (!current[key]) {
         current[key] = {
-          name: part,
-          type: isFile ? 'file' : 'folder',
-          children: isFile ? undefined : {},
+            name: part,
+            type: isFile ? 'file' : 'folder',
+            children: isFile ? undefined : [],
         };
-      }
+        }
 
       if (!isFile) {
         current = current[key].children as { [key: string]: FileNode };
