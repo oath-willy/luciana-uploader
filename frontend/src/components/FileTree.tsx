@@ -53,7 +53,7 @@ export default function FileTree() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/api/container`)
+    fetch(`${process.env.REACT_APP_BACKEND_URL || ''}/api/container`)
       .then((res) => res.json())
       .then((data) => {
         const structured = buildTree(data.files);
