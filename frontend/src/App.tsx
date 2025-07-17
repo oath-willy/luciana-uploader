@@ -1,7 +1,7 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Home from './pages/Home';
 import Explorer from './pages/Explorer';
-import StorageBrowser from './pages/StorageBrowser';
+import StorageBrowser from './pages/FileBrowser';
 
 
 function App() {
