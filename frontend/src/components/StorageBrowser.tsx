@@ -3,6 +3,7 @@ import {
   Breadcrumbs, Anchor, Table, Text, Button, Group, Loader, Stack, Title
 } from '@mantine/core';
 import { Dropzone } from '@mantine/dropzone';
+import { useCallback } from 'react';
 
 type Entry = {
   name: string;
@@ -24,7 +25,7 @@ export default function StorageBrowser() {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchContents = () => {
+  const fetchContents = useCallback(() => {
     setLoading(true);
     fetch(`${process.env.REACT_APP_BACKEND_URL || ''}/api/container?prefix=${path}`)
       .then(res => res.json())
@@ -51,11 +52,11 @@ export default function StorageBrowser() {
       })
       .catch(err => console.error('Errore fetch:', err))
       .finally(() => setLoading(false));
-  };
+  }, [path]);
 
   useEffect(() => {
     fetchContents();
-  }, [path]);
+  }, [fetchContents]);
 
   const handleUpload = async (files: File[]) => {
     const formData = new FormData();
