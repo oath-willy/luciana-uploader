@@ -1,9 +1,9 @@
-import FileExplorerFluent from '../components/FileExplorerFluent';
+import StorageBrowser from '../components/StorageBrowser';
 
 export default function Explorer() {
   return (
     <div style={{ padding: '2rem' }}>
-      <FileExplorerFluent />
+      <StorageBrowser />
     </div>
   );
 }

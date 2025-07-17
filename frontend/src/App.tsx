@@ -1,7 +1,8 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Home from './pages/Home';
 import Explorer from './pages/Explorer';
-import FluentUI from './pages/FluentUI';
+import StorageBrowser from './pages/StorageBrowser';
+
 
 function App() {
   return (
@@ -9,7 +10,7 @@ function App() {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/explorer" element={<Explorer />} />
-        <Route path="/fluentui" element={<FluentUI />} />
+        <Route path="/storage-browser" element={<StorageBrowser />} />
       </Routes>
     </Router>
   );
