@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-  Breadcrumbs, Anchor, Table, Text, Button, Group, Loader, Stack, Title
+  Anchor, Table, Text, Button, Group, Loader, Stack, Title
 } from '@mantine/core';
 import { Dropzone } from '@mantine/dropzone';
 import { useCallback } from 'react';
