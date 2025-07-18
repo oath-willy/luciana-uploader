@@ -1,6 +1,15 @@
 {
   "routes": [
     {
+      "route": "/auth-debug",
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
+      "route": "/login",
+      "rewrite": "/.auth/login/aad",
+      "allowedRoles": ["anonymous"]
+    },
+    {
       "route": "/*",
       "allowedRoles": ["authenticated"]
     }
