@@ -19,12 +19,15 @@ async def upload_to_blob(file: UploadFile):
     )
     return blob_client.url
 
-async def list_blobs_in_container():
+async def list_blobs_in_container(prefix: str = ""):
+    AZURE_STORAGE_CONNECTION_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+    AZURE_CONTAINER_NAME = os.getenv("AZURE_CONTAINER_NAME", "bronze")
+
     blob_service_client = BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING)
     container_client = blob_service_client.get_container_client(AZURE_CONTAINER_NAME)
 
     blob_list = []
-    async for blob in container_client.list_blobs():
+    async for blob in container_client.list_blobs(name_starts_with=prefix):
         blob_list.append(blob.name)
 
     return blob_list
