@@ -1,0 +1,9 @@
+.element-link {
+  text-decoration: none;
+  color: black;
+  cursor: pointer;
+}
+
+.element-link:hover {
+  background-color: #ebebec;
+}

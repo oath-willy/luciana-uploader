@@ -5,6 +5,8 @@ import {
 import { Dropzone } from '@mantine/dropzone';
 import { useCallback } from 'react';
 
+import '../styles/global.css';
+
 type Entry = {
   name: string;
   type: 'file' | 'folder';
@@ -35,7 +37,7 @@ export default function StorageBrowser() {
         const items: Entry[] = [];
 
         for (const fullPath of files) {
-          const relative = fullPath.slice(path.length).replace(/^\/+/, '');
+          const relative = fullPath.replace(path === '' ? '' : `${path}/`, '');
           const parts = relative.split('/');
           if (parts.length > 1) {
             folders.add(parts[0]);
@@ -74,7 +76,10 @@ export default function StorageBrowser() {
     <tr key={entry.name}>
       <td>
         {entry.type === 'folder' ? (
-          <Anchor onClick={() => setPath(joinPath(path, entry.name))}>
+          <Anchor 
+            onClick={() => setPath(joinPath(path, entry.name))}
+            className="element-link"
+          >
             📁 {entry.name}
           </Anchor>
         ) : (
@@ -82,6 +87,7 @@ export default function StorageBrowser() {
             href={`${process.env.REACT_APP_BACKEND_URL || ''}/api/download?path=${joinPath(path, entry.name)}`}
             target="_blank"
             rel="noopener noreferrer"
+            className="element-link"
           >
             📄 {entry.name}
           </Anchor>
@@ -99,36 +105,39 @@ export default function StorageBrowser() {
   ];
 
   return (
-    <Stack p="md">
-      <Title order={3}>📂 Storage Browser</Title>
-      <Breadcrumbs>
-        {breadcrumbs.map((bc, i) => (
-          <Anchor key={i} onClick={() => setPath(bc.path)}>{bc.label}</Anchor>
-        ))}
-      </Breadcrumbs>
+    <Stack p="md" style={{backgroundColor: '#f9f9f9'}}>
 
       <Dropzone onDrop={handleUpload}>
         <Group justify="center" h={60}>
-          <Text>Trascina i file qui o clicca per caricare</Text>
+          <Text style={{border: '2.5px dotted #ffdf4e', backgroundColor : '#faf6e7', padding: '15px'}}>Trascina i file qui o clicca per caricare</Text>
         </Group>
       </Dropzone>
+
+      {path && (
+        <Button variant="light" onClick={() => setPath(getParentPath(path))}>
+          🡸 Back
+        </Button>
+      )}
+
+      <Title order={4}>📂 
+        {breadcrumbs.map((bc, i) => (
+          <Anchor key={i} onClick={() => setPath(bc.path)}>
+            {bc.label + " / "}
+          </Anchor>
+        ))}
+      </Title>
 
       {loading ? (
         <Loader />
       ) : (
         <Table>
           <thead>
-            <tr><th>Nome</th></tr>
+            <tr><th></th></tr>
           </thead>
           <tbody>{rows}</tbody>
         </Table>
       )}
 
-      {path && (
-        <Button variant="light" onClick={() => setPath(getParentPath(path))}>
-          🔙 Torna su
-        </Button>
-      )}
     </Stack>
   );
 }
