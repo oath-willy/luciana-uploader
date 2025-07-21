@@ -52,9 +52,13 @@ jobs:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_YELLOW_FOREST_0AD79D503 }}
           action: "upload"
           app_location: "frontend"
-          api_location: ""
           output_location: "build"
           github_id_token: ${{ steps.idtoken.outputs.result }}
+
+      - name: Debug: cerca staticwebapp.config.json
+        run: |
+          find frontend/build -name staticwebapp.config.json
+          cat frontend/build/staticwebapp.config.json || echo "X Non trovato"
 
   close_pull_request_job:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
