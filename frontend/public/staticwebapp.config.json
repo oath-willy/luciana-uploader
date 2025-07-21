@@ -10,7 +10,13 @@
       "allowedRoles": ["anonymous"]
     },
     {
+      "route": "/",
+      "rewrite": "/index.html",
+      "allowedRoles": ["authenticated"]
+    },
+    {
       "route": "/*",
+      "rewrite": "/index.html",
       "allowedRoles": ["authenticated"]
     }
   ],
