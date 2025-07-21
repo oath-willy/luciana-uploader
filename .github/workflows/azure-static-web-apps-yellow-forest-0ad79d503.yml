@@ -55,11 +55,6 @@ jobs:
           output_location: "build"
           github_id_token: ${{ steps.idtoken.outputs.result }}
 
-      - name: Debug: cerca staticwebapp.config.json
-        run: |
-          find frontend/build -name staticwebapp.config.json
-          cat frontend/build/staticwebapp.config.json || echo "X Non trovato"
-
   close_pull_request_job:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
     runs-on: ubuntu-latest
