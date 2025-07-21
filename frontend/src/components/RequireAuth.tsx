@@ -17,7 +17,7 @@ export function RequireAuth({ children }: { children: ReactNode }) {
         }
 
         const email = user.userDetails || "";
-        if (email.endsWith("@key-stone.it")) {
+        if (email.endsWith("@key-stone.it") || email.toLowerCase() === "matteo@finstat.it") {
           setAuthorized(true);
         } else {
           alert("Accesso negato: solo utenti interni @key-stone.it sono autorizzati.");
