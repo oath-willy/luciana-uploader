@@ -2,6 +2,7 @@
   "routes": [
     {
       "route": "/auth-debug",
+      "rewrite": "/index.html",
       "allowedRoles": ["anonymous", "authenticated"]
     },
     {
