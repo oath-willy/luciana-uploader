@@ -33,23 +33,15 @@ jobs:
       - name: Set REACT_APP_BACKEND_URL
         run: echo "REACT_APP_BACKEND_URL=https://luciana-backend.azurewebsites.net" >> $GITHUB_ENV
 
-      - name: Install OIDC Client from Core Package
-        run: npm install @actions/core@1.6.0 @actions/http-client
-
-      - name: Get Id Token
-        uses: actions/github-script@v6
-        id: idtoken
-        with:
-          script: |
-            const coredemo = require('@actions/core')
-            return await coredemo.getIDToken()
-          result-encoding: string
+      - name: Install dependencies and build frontend
+        run: |
+          cd frontend
+          npm install
+          npm run build
 
       - name: Move staticwebapp.config.json to build root
         run: |
-          if [ -f frontend/build/static/staticwebapp.config.json ]; then
-            mv frontend/build/static/staticwebapp.config.json frontend/build/staticwebapp.config.json
-          fi
+          find frontend/build -name staticwebapp.config.json -exec cp {} frontend/build/staticwebapp.config.json \;
 
       - name: Build And Deploy
         id: builddeploy
@@ -61,7 +53,6 @@ jobs:
           api_location: ""
           output_location: "build"
           github_id_token: ${{ steps.idtoken.outputs.result }}
-
 
   close_pull_request_job:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
