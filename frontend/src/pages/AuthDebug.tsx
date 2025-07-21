@@ -7,7 +7,11 @@ export default function AuthDebug() {
     fetch("/.auth/me")
       .then((res) => res.json())
       .then((data) => {
+        console.log("🔍 /.auth/me response:", data);
         setUser(data.clientPrincipal);
+      })
+      .catch((err) => {
+        console.error("❌ Errore durante il fetch:", err);
       });
   }, []);
 
