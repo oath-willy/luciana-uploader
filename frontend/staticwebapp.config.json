@@ -1,0 +1,33 @@
+{
+  "routes": [
+    {
+      "route": "/login",
+      "rewrite": "/index.html",
+      "allowedRoles": ["anonymous"]
+    },
+    {
+      "route": "/auth-debug",
+      "rewrite": "/index.html",
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
+      "route": "/",
+      "rewrite": "/index.html",
+      "allowedRoles": ["authenticated"]
+    },
+    {
+      "route": "/*",
+      "rewrite": "/index.html",
+      "allowedRoles": ["authenticated"]
+    }
+  ],
+  "auth": {
+    "identityProviders": {
+      "azureActiveDirectory": {
+        "registration": {
+          "openIdIssuer": "https://login.microsoftonline.com/3630ff06-11ea-4763-960a-fc74e8780220/v2.0"
+        }
+      }
+    }
+  }
+}
