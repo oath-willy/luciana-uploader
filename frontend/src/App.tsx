@@ -3,6 +3,7 @@ import Home from './pages/Home';
 import Explorer from './pages/Explorer';
 import StorageBrowser from './pages/FileBrowser';
 import AuthDebug from "./pages/AuthDebug";
+import Login from './pages/Login';
 
 
 function App() {
@@ -13,6 +14,7 @@ function App() {
         <Route path="/explorer" element={<Explorer />} />
         <Route path="/storage-browser" element={<StorageBrowser />} />
         <Route path="/auth-debug" element={<AuthDebug />} />
+        <Route path="/login" element={<Login />} />
       </Routes>
     </Router>
   );
