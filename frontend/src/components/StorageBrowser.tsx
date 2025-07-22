@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Anchor, Table, Text, Button, Group, Loader, Stack, Title, ActionIcon } from '@mantine/core';
+import { Anchor, Table, Text, Group, Loader, Stack, Title, ActionIcon } from '@mantine/core';
 import { ArrowLeft } from 'lucide-react';
 import { Dropzone } from '@mantine/dropzone';
 import { Pencil, Trash2 } from 'lucide-react';
