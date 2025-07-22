@@ -7,6 +7,15 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
 
   useEffect(() => {
+    const isLocal = window.location.hostname === "localhost";
+
+    if (isLocal) {
+      console.log("🧪 Bypass autenticazione in locale");
+      setAuthorized(true);
+      setLoading(false);
+      return;
+    }
+
     fetch("/.auth/me")
       .then((res) => res.json())
       .then((data) => {
@@ -17,7 +26,10 @@ export function RequireAuth({ children }: { children: ReactNode }) {
         }
 
         const email = user.userDetails || "";
-        if (email.endsWith("@key-stone.it") || email.toLowerCase() === "matteo@finstat.it") {
+        if (
+          email.endsWith("@key-stone.it") ||
+          email.toLowerCase() === "matteo@finstat.it"
+        ) {
           setAuthorized(true);
         } else {
           alert("Accesso negato: solo utenti interni @key-stone.it sono autorizzati.");

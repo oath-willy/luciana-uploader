@@ -1,15 +1,15 @@
-import { useEffect, useState } from 'react';
-import {
-  Anchor, Table, Text, Button, Group, Loader, Stack, Title
-} from '@mantine/core';
+import { useEffect, useState, useCallback } from 'react';
+import { Anchor, Table, Text, Button, Group, Loader, Stack, Title, ActionIcon } from '@mantine/core';
+import { ArrowLeft } from 'lucide-react';
 import { Dropzone } from '@mantine/dropzone';
-import { useCallback } from 'react';
+import { Pencil, Trash2 } from 'lucide-react';
 
 import '../styles/global.css';
 
 type Entry = {
   name: string;
   type: 'file' | 'folder';
+  lastModified?: string;
 };
 
 function joinPath(...parts: string[]) {
@@ -32,17 +32,20 @@ export default function StorageBrowser() {
     fetch(`${process.env.REACT_APP_BACKEND_URL || ''}/api/container?prefix=${path}`)
       .then(res => res.json())
       .then(data => {
-        const files = data.files || [];
+        const rawFiles = data.files || [];
         const folders = new Set<string>();
         const items: Entry[] = [];
 
-        for (const fullPath of files) {
+        for (const file of rawFiles) {
+          const fullPath = file.name;
+          const lastModified = file.last_modified;
           const relative = fullPath.replace(path === '' ? '' : `${path}/`, '');
           const parts = relative.split('/');
+
           if (parts.length > 1) {
             folders.add(parts[0]);
           } else if (parts[0]) {
-            items.push({ name: parts[0], type: 'file' });
+            items.push({ name: parts[0], type: 'file', lastModified });
           }
         }
 
@@ -72,27 +75,93 @@ export default function StorageBrowser() {
     fetchContents();
   };
 
+  const handleDelete = async (name: string) => {
+    const confirmText = prompt(`Sei sicuro di voler eliminare "${name}"?\n\nScrivi DELETE per confermare:`);
+
+    if (confirmText !== 'DELETE') {
+      alert("Eliminazione annullata.");
+      return;
+    }
+
+    const fullPath = joinPath(path, name);
+
+    await fetch(`${process.env.REACT_APP_BACKEND_URL || ''}/api/delete?path=${fullPath}`, {
+      method: 'DELETE',
+    });
+
+    fetchContents();
+  };
+
+  const handleRename = async (name: string) => {
+    const extension = name.includes('.') ? name.split('.').pop() : '';
+    const baseName = name.includes('.') ? name.substring(0, name.lastIndexOf('.')) : name;
+
+    const input = prompt(`Nuovo nome per ${name}:`, baseName);
+    if (!input || input === baseName) return;
+
+    let newName = input;
+    if (!input.includes('.') && extension) {
+      newName = `${input}.${extension}`;
+    }
+
+    const oldPath = joinPath(path, name);
+    const newPath = joinPath(path, newName);
+
+    await fetch(`${process.env.REACT_APP_BACKEND_URL || ''}/api/rename`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ oldPath, newPath }),
+    });
+
+    fetchContents();
+  };
+
   const rows = entries.map((entry) => (
     <tr key={entry.name}>
+
       <td>
-        {entry.type === 'folder' ? (
-          <Anchor 
-            onClick={() => setPath(joinPath(path, entry.name))}
-            className="element-link"
-          >
-            📁 {entry.name}
-          </Anchor>
-        ) : (
-          <Anchor
-            href={`${process.env.REACT_APP_BACKEND_URL || ''}/api/download?path=${joinPath(path, entry.name)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="element-link"
-          >
-            📄 {entry.name}
-          </Anchor>
-        )}
+        {
+          entry.type === 'folder' ? (
+            <Anchor onClick={() => setPath(joinPath(path, entry.name))} className="element-link">
+              📁 {entry.name}
+            </Anchor>
+          ) : (
+            <Anchor
+              href={`${process.env.REACT_APP_BACKEND_URL || ''}/api/download?path=${joinPath(path, entry.name)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="element-link"
+            >
+              📄 {entry.name}
+            </Anchor>
+          )
+        }
       </td>
+
+      <td style={{ paddingLeft: '3px', fontStyle: 'italic', fontSize: '11px' }}>
+        {entry.lastModified ? new Date(entry.lastModified).toLocaleString() : '-'}
+      </td>
+
+      <td style={{ paddingLeft: '10px' }}>
+        <ActionIcon 
+          variant="unstyled"
+          onClick={() => handleRename(entry.name)} 
+          className="action-icon"
+        >
+          <Pencil size={13} />
+        </ActionIcon>
+      </td>
+
+      <td>
+        <ActionIcon 
+          variant="unstyled"
+          onClick={() => handleDelete(entry.name)} 
+          className="action-icon"
+        >
+          <Trash2 size={13} />
+        </ActionIcon>
+      </td>
+
     </tr>
   ));
 
@@ -113,16 +182,25 @@ export default function StorageBrowser() {
         </Group>
       </Dropzone>
 
-      {path && (
-        <Button variant="light" onClick={() => setPath(getParentPath(path))}>
-          🡸 Back
-        </Button>
-      )}
 
-      <Title order={4}>📂 
+      <Title order={4}>
+        <ActionIcon
+          variant="light"
+          onClick={() => setPath(getParentPath(path))}
+          className="action-icon"
+          style = {{paggingRight: '5px'}}
+          >
+          <ArrowLeft size={13} />
+        </ActionIcon>        
+        📂 
         {breadcrumbs.map((bc, i) => (
-          <Anchor key={i} onClick={() => setPath(bc.path)}>
-            {bc.label + " / "}
+          <Anchor
+            key={i}
+            onClick={() => setPath(bc.path)}
+            className="breadcrumb-link"
+          >
+            <span className="breadcrumb-label">{bc.label}</span>
+            {" / "}
           </Anchor>
         ))}
       </Title>
@@ -130,9 +208,14 @@ export default function StorageBrowser() {
       {loading ? (
         <Loader />
       ) : (
-        <Table>
+        <Table className="compact-table">
           <thead>
-            <tr><th></th></tr>
+            <tr>
+              <th></th>
+              <th></th>
+              <th></th>
+              <th></th>
+            </tr>
           </thead>
           <tbody>{rows}</tbody>
         </Table>
