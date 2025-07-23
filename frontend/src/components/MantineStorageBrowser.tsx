@@ -1,16 +1,4 @@
-import {
-  Box,
-  Group,
-  Stack,
-  Text,
-  Tooltip,
-  ActionIcon,
-  Breadcrumbs,
-  Anchor,
-  Paper,
-  Loader,
-  rem,
-} from '@mantine/core';
+import { Group, Stack, Text, Tooltip, ActionIcon, Breadcrumbs, Anchor, Paper, Loader } from '@mantine/core';
 import {
   IconFolder,
   IconFile,
