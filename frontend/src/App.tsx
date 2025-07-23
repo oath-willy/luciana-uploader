@@ -1,5 +1,4 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { createTheme } from '@mantine/core';
 
 //Components
 import { RequireAuth } from "./components/RequireAuth";
