@@ -1,5 +1,5 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { createTheme, MantineProvider } from '@mantine/core';
+import { createTheme } from '@mantine/core';
 
 //Components
 import { RequireAuth } from "./components/RequireAuth";
@@ -10,11 +10,6 @@ import StorageBrowser from './pages/FileBrowser';
 import AuthDebug from "./pages/AuthDebug";
 import Login from './pages/Login';
 import AdminDashboardPage  from "./pages/AdminDashboardPage";
-
-const theme = createTheme({
-  /* opzionale: aggiungi qui le tue personalizzazioni */
-});
-
 
 function App() {
   return (
