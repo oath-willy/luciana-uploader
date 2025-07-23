@@ -2,10 +2,6 @@
 import {
   IconHome2,
   IconSettings,
-  IconUser,
-  IconFileAnalytics,
-  IconLock,
-  IconDatabaseImport,
   IconLogout,
   IconTestPipe,
   IconCode, 
