@@ -1,13 +1,18 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, Query
+from fastapi import APIRouter, UploadFile, File, HTTPException, Query, Response
 from pydantic import BaseModel
-from services.storage import (
-    upload_to_blob,
-    list_blobs_in_container,
-    delete_blob,
-    rename_blob
-)
+from azure.storage.blob.aio import BlobServiceClient
+from dotenv import load_dotenv
+from services.storage import ( upload_to_blob, list_blobs_in_container, delete_blob, rename_blob )
+
+import os
 
 router = APIRouter()
+
+# ************************************
+#           STORAGE BROWSER
+# ************************************
+AZURE_STORAGE_CONNECTION_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+AZURE_CONTAINER_NAME = os.getenv("AZURE_CONTAINER_NAME", "bronze")
 
 # Upload file
 @router.post("/upload")
@@ -48,3 +53,25 @@ async def api_rename(request: RenameRequest):
         return {"message": f"Rinominato {request.oldPath} → {request.newPath}"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# Download file
+@router.get("/download")
+async def download_file(path: str):
+    try:
+        blob_service_client = BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING)
+        container_client = blob_service_client.get_container_client(AZURE_CONTAINER_NAME)
+        blob_client = container_client.get_blob_client(path)
+
+        if not await blob_client.exists():
+            raise HTTPException(status_code=404, detail="File non trovato")
+
+        stream = await blob_client.download_blob()
+        data = await stream.readall()
+
+        return Response(
+            content=data,
+            media_type='application/octet-stream',
+            headers={'Content-Disposition': f'attachment; filename="{path.split("/")[-1]}"'}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Errore durante il download: {str(e)}")

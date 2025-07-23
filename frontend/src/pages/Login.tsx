@@ -4,11 +4,11 @@ export default function Login() {
   const [redirecting, setRedirecting] = useState(true);
 
   useEffect(() => {
-    console.log("🔐 Redirecting to Azure Entra ID...");
+    console.log("Redirecting to Azure Entra ID...");
     try {
       window.location.href = "/.auth/login/aad";
     } catch (err) {
-      console.error("❌ Errore nel redirect:", err);
+      console.error("Errore nel redirect:", err);
       setRedirecting(false);
     }
   }, []);
@@ -16,9 +16,9 @@ export default function Login() {
   return (
     <div style={{ padding: "2rem" }}>
       {redirecting ? (
-        <p>🔐 Reindirizzamento al login EntraID...</p>
+        <p>Reindirizzamento al login EntraID...</p>
       ) : (
-        <p>❌ Errore durante il reindirizzamento. Prova <a href="/.auth/login/aad">questo link</a>.</p>
+        <p>Errore durante il reindirizzamento. Prova <a href="/.auth/login/aad">questo link</a>.</p>
       )}
     </div>
   );

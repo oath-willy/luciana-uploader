@@ -3,10 +3,11 @@ import { Link } from 'react-router-dom';
 export default function Home() {
   return (
     <div style={{ padding: '2rem' }}>
-      <h1>Luciana Project</h1>
+      <h1>LUCIANA PROJECT</h1>
+      <h2>TEST PAGE</h2>
       <ul>
-        <li><Link to="/explorer">🔍 Esplora risorse (bronze)</Link></li>
-        <li><Link to="/storage-browser">🔍 StorageBrowser</Link></li>
+        <li><Link to="/storage-browser">BRONZE STORAGE BROWSER</Link></li>
+        <li><Link to="/admin">ADMIN PAGE</Link></li>
       </ul>
     </div>
   );

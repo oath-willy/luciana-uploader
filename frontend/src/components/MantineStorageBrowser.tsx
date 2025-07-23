@@ -1,10 +1,26 @@
-import { useEffect, useState, useCallback } from 'react';
-import { Anchor, Table, Text, Group, Loader, Stack, Title, ActionIcon } from '@mantine/core';
-import { ArrowLeft } from 'lucide-react';
+import {
+  Box,
+  Group,
+  Stack,
+  Text,
+  Tooltip,
+  ActionIcon,
+  Breadcrumbs,
+  Anchor,
+  Paper,
+  Loader,
+  rem,
+} from '@mantine/core';
+import {
+  IconFolder,
+  IconFile,
+  IconTrash,
+  IconPencil,
+  IconChevronRight,
+  IconArrowLeft,
+} from '@tabler/icons-react';
 import { Dropzone } from '@mantine/dropzone';
-import { Pencil, Trash2 } from 'lucide-react';
-
-import '../styles/global.css';
+import { useEffect, useState, useCallback } from 'react';
 
 type Entry = {
   name: string;
@@ -16,14 +32,13 @@ function joinPath(...parts: string[]) {
   return parts.filter(Boolean).join('/');
 }
 
-//GET PARENT PATH
 function getParentPath(path: string): string {
   const parts = path.split('/').filter(Boolean);
   parts.pop();
   return parts.join('/');
 }
 
-export default function StorageBrowser() {
+export default function MantineStorageBrowser() {
   const [path, setPath] = useState('');
   const [entries, setEntries] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -66,9 +81,7 @@ export default function StorageBrowser() {
 
   const handleUpload = async (files: File[]) => {
     const formData = new FormData();
-    for (const file of files) {
-      formData.append('file', file);
-    }
+    for (const file of files) formData.append('file', file);
     await fetch(`${process.env.REACT_APP_BACKEND_URL || ''}/api/upload?path=${path}`, {
       method: 'POST',
       body: formData,
@@ -78,32 +91,23 @@ export default function StorageBrowser() {
 
   const handleDelete = async (name: string) => {
     const confirmText = prompt(`Sei sicuro di voler eliminare "${name}"?\n\nScrivi DELETE per confermare:`);
-
-    if (confirmText !== 'DELETE') {
-      alert("Eliminazione annullata.");
-      return;
-    }
+    if (confirmText !== 'DELETE') return;
 
     const fullPath = joinPath(path, name);
-
     await fetch(`${process.env.REACT_APP_BACKEND_URL || ''}/api/delete?path=${fullPath}`, {
       method: 'DELETE',
     });
-
     fetchContents();
   };
 
   const handleRename = async (name: string) => {
     const extension = name.includes('.') ? name.split('.').pop() : '';
     const baseName = name.includes('.') ? name.substring(0, name.lastIndexOf('.')) : name;
-
     const input = prompt(`Nuovo nome per ${name}:`, baseName);
     if (!input || input === baseName) return;
 
     let newName = input;
-    if (!input.includes('.') && extension) {
-      newName = `${input}.${extension}`;
-    }
+    if (!input.includes('.') && extension) newName = `${input}.${extension}`;
 
     const oldPath = joinPath(path, name);
     const newPath = joinPath(path, newName);
@@ -113,18 +117,16 @@ export default function StorageBrowser() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ oldPath, newPath }),
     });
-
     fetchContents();
   };
 
   const handleDownload = async (fullPath: string) => {
     try {
       const response = await fetch(`${process.env.REACT_APP_BACKEND_URL || ''}/api/download?path=${fullPath}`);
-      if (!response.ok) throw new Error("Errore durante il download");
+      if (!response.ok) throw new Error('Errore durante il download');
 
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
-
       const link = document.createElement('a');
       link.href = url;
       link.download = fullPath.split('/').pop() || 'file';
@@ -133,57 +135,9 @@ export default function StorageBrowser() {
       link.remove();
       window.URL.revokeObjectURL(url);
     } catch (error) {
-      console.error("Errore nel download:", error);
-      alert("Impossibile scaricare il file.");
+      alert('Impossibile scaricare il file.');
     }
   };
-
-  const rows = entries.map((entry) => (
-    <tr key={entry.name}>
-
-      <td>
-        {
-          entry.type === 'folder' ? (
-            <Anchor onClick={() => setPath(joinPath(path, entry.name))} className="element-link">
-              📁 {entry.name}
-            </Anchor>
-          ) : (
-            <Anchor
-              onClick={() => handleDownload(joinPath(path, entry.name))}
-              className="element-link"
-            >
-              📄 {entry.name}
-            </Anchor>
-          )
-        }
-      </td>
-
-      <td style={{ paddingLeft: '3px', fontStyle: 'italic', fontSize: '11px' }}>
-        {entry.lastModified ? new Date(entry.lastModified).toLocaleString() : '-'}
-      </td>
-
-      <td style={{ paddingLeft: '10px' }}>
-        <ActionIcon 
-          variant="unstyled"
-          onClick={() => handleRename(entry.name)} 
-          className="action-icon"
-        >
-          <Pencil size={13} />
-        </ActionIcon>
-      </td>
-
-      <td>
-        <ActionIcon 
-          variant="unstyled"
-          onClick={() => handleDelete(entry.name)} 
-          className="action-icon"
-        >
-          <Trash2 size={13} />
-        </ActionIcon>
-      </td>
-
-    </tr>
-  ));
 
   const breadcrumbs = [
     { label: 'Root', path: '' },
@@ -194,53 +148,90 @@ export default function StorageBrowser() {
   ];
 
   return (
-    <Stack p="md" style={{backgroundColor: '#f9f9f9'}}>
-
+    <Stack p="md">
       <Dropzone onDrop={handleUpload}>
         <Group justify="center" h={60}>
-          <Text style={{border: '2.5px dotted #ffdf4e', backgroundColor : '#faf6e7', padding: '15px'}}>Trascina i file qui o clicca per caricare</Text>
+          <Text style={{ border: '2px dotted #ffdf4e', backgroundColor: '#faf6e7', padding: '15px' }}>
+            Trascina i file qui o clicca per caricare
+          </Text>
         </Group>
       </Dropzone>
 
+      <Group gap="xs">
+        <ActionIcon onClick={() => setPath(getParentPath(path))} variant="subtle" color="gray">
+          <IconArrowLeft size={16} />
+        </ActionIcon>
 
-      <Title order={4}>
-        <ActionIcon
-          variant="light"
-          onClick={() => setPath(getParentPath(path))}
-          className="action-icon"
-          style = {{paggingRight: '5px'}}
-          >
-          <ArrowLeft size={13} />
-        </ActionIcon>        
-        📂 
-        {breadcrumbs.map((bc, i) => (
-          <Anchor
-            key={i}
-            onClick={() => setPath(bc.path)}
-            className="breadcrumb-link"
-          >
-            <span className="breadcrumb-label">{bc.label}</span>
-            {" / "}
-          </Anchor>
-        ))}
-      </Title>
+        <Breadcrumbs separator={<IconChevronRight size="0.9rem" />}>
+          {breadcrumbs.map((bc, i) => (
+            <Anchor key={i} onClick={() => setPath(bc.path)}>
+              {bc.label}
+            </Anchor>
+          ))}
+        </Breadcrumbs>
+      </Group>
 
       {loading ? (
-        <Loader /> 
+        <Loader />
       ) : (
-        <Table className="compact-table">
-          <thead>
-            <tr>
-              <th></th>
-              <th></th>
-              <th></th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>{rows}</tbody>
-        </Table>
-      )}
+        <Stack gap="xs" style={{padding: '0px !important'}}>
+          {entries.map((entry) => (
+            <Paper
+              key={entry.name}
+              p="1"
+              radius="md"              
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                backgroundColor: entry.type === 'folder' ? 'white' : 'white',
+              }}
+            >
+              <Group gap="xs" style={{ flex: 1, overflow: 'hidden', padding: '0px !important' }}>
+                {entry.type === 'folder' ? (
+                  <IconFolder size={18} color="orange" />
+                ) : (
+                  <IconFile size={18} color="gray" />
+                )}
 
+                <Tooltip label={entry.name} withArrow>
+                  <Text
+                    size="sm"
+                    fw={400}
+                    style={{
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      cursor: 'pointer',
+                    }}
+                    onClick={() =>
+                      entry.type === 'folder'
+                        ? setPath(joinPath(path, entry.name))
+                        : handleDownload(joinPath(path, entry.name))
+                    }
+                  >
+                    {entry.name}
+                  </Text>
+                </Tooltip>
+              </Group>
+
+              <Group gap={8} style={{ flexShrink: 0 }}>
+                <Text size="xs" c="dimmed">
+                  {entry.lastModified
+                    ? new Date(entry.lastModified).toLocaleString()
+                    : ''}
+                </Text>
+                <ActionIcon size="xs" variant="light" onClick={() => handleRename(entry.name)}>
+                  <IconPencil size={12} />
+                </ActionIcon>
+                <ActionIcon size="xs" variant="light" color="red" onClick={() => handleDelete(entry.name)}>
+                  <IconTrash size={12} />
+                </ActionIcon>
+              </Group>
+            </Paper>
+          ))}
+        </Stack>
+      )}
     </Stack>
   );
 }

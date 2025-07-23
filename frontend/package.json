@@ -3,9 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
+    "@azure/msal-browser": "^4.15.0",
+    "@azure/msal-react": "^3.0.15",
     "@mantine/core": "^8.1.1",
     "@mantine/dropzone": "^8.1.1",
     "@mantine/hooks": "^8.1.1",
+    "@tabler/icons-react": "^3.34.1",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",

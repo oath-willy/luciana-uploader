@@ -49,12 +49,14 @@
 /* 
   StorageBrowser: PATH
 */
+
 .breadcrumb-link {
   cursor: pointer;
-  font-weight: 200; /* grassetto */
+  font-weight: 400; /* grassetto */
   transition: font-weight 0.2s ease;
 }
 
 .breadcrumb-link:hover .breadcrumb-label {
   font-weight: 600; /* grassetto */
+  color: #eba800;
 }
