@@ -7,6 +7,8 @@ import {
   IconLock,
   IconDatabaseImport,
   IconLogout,
+  IconTestPipe,
+  IconBrowser
 } from '@tabler/icons-react';
 import {
   AppShell,
@@ -81,6 +83,9 @@ export default function AdminDashboardPage() {
               <ScrollArea type="auto">
                 <Stack gap="xs">
                   <NavLink label="Home" leftSection={<IconHome2 size={18} />} component={Link} to="/" />
+                  <NavLink label="Tests" leftSection={<IconTestPipe size={18} />}>
+                    <NavLink label="File Browser" pl="md" />
+                  </NavLink>
                   <NavLink label="Users" leftSection={<IconUser size={18} />} />
                   <NavLink label="Reports" leftSection={<IconFileAnalytics size={18} />}>
                     <NavLink label="Monthly" pl="md" />

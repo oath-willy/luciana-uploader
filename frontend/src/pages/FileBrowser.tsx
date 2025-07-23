@@ -9,9 +9,11 @@ export default function Explorer() {
         <Grid.Col span={4}>
           <StorageBrowser />
         </Grid.Col>
+        <Grid.Col span={8}></Grid.Col>
         <Grid.Col span={4}>
           <MantineStorageBrowser />
         </Grid.Col>
+        <Grid.Col span={8}></Grid.Col>
       </Grid>
     </div>
   );

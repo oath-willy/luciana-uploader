@@ -9,7 +9,7 @@ import Home from './pages/Home';
 import StorageBrowser from './pages/FileBrowser';
 import AuthDebug from "./pages/AuthDebug";
 import Login from './pages/Login';
-import DoubleNavbar from "./pages/AdminDashboardPage_old";
+import AdminDashboardPage  from "./pages/AdminDashboardPage";
 
 const theme = createTheme({
   /* opzionale: aggiungi qui le tue personalizzazioni */
@@ -23,17 +23,11 @@ function App() {
         <Route path="/" element={<RequireAuth><Home /></RequireAuth>} />        
         <Route path="/login" element={<Login />} />        
         <Route path="/storage-browser" element={<RequireAuth><StorageBrowser /></RequireAuth>} />
-        <Route path="/admin" element={
-          <MantineProvider
-            theme={theme}
-            defaultColorScheme="light"
-            withCssVariables
-          >
-            <RequireAuth>
-              <DoubleNavbar />
-            </RequireAuth>
-          </MantineProvider>
-          } />
+        <Route path="/admin/*" element={
+          <RequireAuth>
+            <AdminDashboardPage />
+          </RequireAuth>
+        } />
         <Route path="/auth-debug" element={<RequireAuth><AuthDebug /></RequireAuth>} />
       </Routes>
     </Router>    

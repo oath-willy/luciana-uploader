@@ -1,4 +1,4 @@
-// AdminDashboardPage.tsx - con profilo da /.auth/me, senza MSAL
+// AdminDashboardPage.tsx - stile Mantine UI con avatar e logout (/.auth/me)
 import {
   IconHome2,
   IconSettings,
@@ -7,21 +7,31 @@ import {
   IconLock,
   IconDatabaseImport,
   IconLogout,
+  IconTestPipe,
+  IconCode, 
+  IconBrandGithub
 } from '@tabler/icons-react';
 import {
   AppShell,
   AppShellNavbar,
   NavLink,
-  Code,
   ScrollArea,
   Text,
   Box,
   Stack,
   Group,
   Avatar,
+  UnstyledButton,
+  Code,
   Loader,
 } from '@mantine/core';
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { Routes, Route } from 'react-router-dom';
+import StorageBrowser from '../components/StorageBrowser';
+import MantineStorageBrowser from '../components/MantineStorageBrowser';
+import { Grid } from '@mantine/core';
+
 
 type UserData = {
   name: string;
@@ -64,56 +74,74 @@ export default function AdminDashboardPage() {
         collapsed: { mobile: false },
       }}
     >
-      <AppShellNavbar p="md">
+      <AppShellNavbar p="md" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
         {loading ? (
           <Loader />
         ) : (
           <>
-            <ScrollArea type="auto" style={{ flex: 1 }}>
-              <Stack gap="xs">
-                <NavLink label="Home" leftSection={<IconHome2 size={18} />} />
-                <NavLink label="Users" leftSection={<IconUser size={18} />} />
+            <div>
+              <Box mb="md">
+                <Group justify="space-between">
+                  <Text fw={700}>Luciana Admin</Text>
+                  <Code fw={700}>v1.0.0</Code>
+                </Group>
+              </Box>
+              <ScrollArea type="auto">
+                <Stack gap="xs">
+                  <NavLink label="Home" leftSection={<IconHome2 size={18} />} component={Link} to="/" />
+                  <NavLink label="Tests" leftSection={<IconTestPipe size={18} />}>
+                    <NavLink label="File Browser" pl="md" component={Link} to="/admin/file-browser" />
+                    <NavLink label="File Browser 2" pl="md" component={Link} to="/admin/file-browser-2" />
+                  </NavLink>
+                  <NavLink label="RStudio" leftSection={<IconCode size={18} />} component={Link} to="http://108.142.241.77:8787/"></NavLink>
+                  <NavLink label="GitHub" leftSection={<IconBrandGithub size={18} />} component={Link} to="https://github.com/keystone-dev/luciana-project"></NavLink>
+                  <NavLink label="Settings" leftSection={<IconSettings size={18} />} />
+                </Stack>
+              </ScrollArea>
+            </div>
 
-                <NavLink label="Reports" leftSection={<IconFileAnalytics size={18} />}>
-                  <NavLink label="Monthly" pl="md" />
-                  <NavLink label="Annual" pl="md" />
-                </NavLink>
-
-                <NavLink label="Database" leftSection={<IconDatabaseImport size={18} />}>
-                  <NavLink label="Imports" pl="md" />
-                  <NavLink label="Exports" pl="md" />
-                </NavLink>
-
-                <NavLink label="Security" leftSection={<IconLock size={18} />} />
-                <NavLink label="Settings" leftSection={<IconSettings size={18} />} />
-              </Stack>
-            </ScrollArea>
-
-            {user && (
-              <Box mt="md">
-                <Group gap="sm">
-                  <Avatar src={avatarUrl} radius="xl" size="md" />
-                  <Box>
-                    <Text size="sm" fw={600}>{user.name}</Text>
-                    <Text size="xs" c="dimmed">{user.email}</Text>
+            <Box>
+              <UnstyledButton p="xs" w="100%">
+                <Group>
+                  <Avatar src={avatarUrl} radius="xl" />
+                  <Box style={{ flex: 1 }}>
+                    <Text size="sm" fw={500} truncate="end">{user?.name}</Text>
+                    <Text size="xs" c="dimmed" truncate="end">{user?.email}</Text>
                   </Box>
                 </Group>
-                <NavLink
-                  label="Logout"
-                  leftSection={<IconLogout size={18} />}
-                  color="red"
-                  variant="light"
-                  onClick={handleLogout}
-                />
-                <Code mt="md" fw={700}>v1.0.0</Code>
-              </Box>
-            )}
+              </UnstyledButton>
+
+              <NavLink
+                label="Logout"
+                leftSection={<IconLogout size={18} />}
+                color="red"
+                variant="light"
+                onClick={handleLogout}
+                mt="sm"
+              />
+            </Box>
           </>
         )}
       </AppShellNavbar>
 
       <AppShell.Main>
-        <Text size="lg">Benvenuto nella dashboard amministrativa!</Text>
+        <Routes>
+          <Route path="/" element={<Text size="lg">Benvenuto nella dashboard amministrativa!</Text>} />
+          <Route path="file-browser" element={
+            <Grid>
+              <Grid.Col span={4}>
+                <StorageBrowser />
+              </Grid.Col>
+            </Grid>
+          } />
+          <Route path="file-browser-2" element={
+            <Grid>
+              <Grid.Col span={4}>
+                <MantineStorageBrowser />
+              </Grid.Col>
+            </Grid>
+            } />
+        </Routes>
       </AppShell.Main>
     </AppShell>
   );
