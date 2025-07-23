@@ -23,6 +23,7 @@ import {
   Loader,
 } from '@mantine/core';
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 
 type UserData = {
   name: string;
@@ -71,9 +72,15 @@ export default function AdminDashboardPage() {
         ) : (
           <>
             <div>
+              <Box mb="md">
+                <Group justify="space-between">
+                  <Text fw={700}>Luciana Admin</Text>
+                  <Code fw={700}>v1.0.0</Code>
+                </Group>
+              </Box>
               <ScrollArea type="auto">
                 <Stack gap="xs">
-                  <NavLink label="Home" leftSection={<IconHome2 size={18} />} />
+                  <NavLink label="Home" leftSection={<IconHome2 size={18} />} component={Link} to="/" />
                   <NavLink label="Users" leftSection={<IconUser size={18} />} />
                   <NavLink label="Reports" leftSection={<IconFileAnalytics size={18} />}>
                     <NavLink label="Monthly" pl="md" />
@@ -108,7 +115,6 @@ export default function AdminDashboardPage() {
                 onClick={handleLogout}
                 mt="sm"
               />
-              <Code mt="md" fw={700}>v1.0.0</Code>
             </Box>
           </>
         )}
