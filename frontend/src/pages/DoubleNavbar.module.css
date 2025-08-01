@@ -1,0 +1,92 @@
+.navbar {
+  background-color: var(--mantine-color-white);
+  height: 100vh;
+  width: 300px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--mantine-color-gray-3);
+}
+
+.wrapper {
+  display: flex;
+  flex: 1;
+}
+
+.aside {
+  flex: 0 0 60px;
+  background-color: var(--mantine-color-body);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border-right: 1px solid var(--mantine-color-gray-3);
+}
+
+.main {
+  flex: 1;
+  background-color: var(--mantine-color-gray-0);
+}
+
+.mainLink {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--mantine-radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--mantine-color-gray-7);
+}
+
+.mainLink:hover {
+  background-color: var(--mantine-color-gray-0);
+}
+
+.mainLink[data-active] {
+  background-color: var(--mantine-color-blue-light);
+  color: var(--mantine-color-blue-light-color);
+}
+
+.title {
+  font-family: Outfit, var(--mantine-font-family);
+  margin-bottom: var(--mantine-spacing-xl);
+  background-color: var(--mantine-color-body);
+  padding: var(--mantine-spacing-md);
+  font-weight: 500;
+  padding-top: 18px;
+  height: 60px;
+  border-bottom: 1px solid var(--mantine-color-gray-3);
+}
+
+.logo {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  height: 60px;
+  padding-top: var(--mantine-spacing-md);
+  border-bottom: 1px solid var(--mantine-color-gray-3);
+  margin-bottom: var(--mantine-spacing-xl);
+}
+
+.link {
+  display: block;
+  text-decoration: none;
+  border-top-right-radius: var(--mantine-radius-md);
+  border-bottom-right-radius: var(--mantine-radius-md);
+  color: var(--mantine-color-gray-7);
+  padding: 0 var(--mantine-spacing-md);
+  font-size: var(--mantine-font-size-sm);
+  margin-right: var(--mantine-spacing-md);
+  font-weight: 500;
+  height: 44px;
+  line-height: 44px;
+}
+
+.link:hover {
+  background-color: var(--mantine-color-gray-1);
+  color: var(--mantine-color-dark);
+}
+
+.link[data-active] {
+  border-left-color: var(--mantine-color-blue-filled);
+  background-color: var(--mantine-color-blue-filled);
+  color: var(--mantine-color-white);
+}

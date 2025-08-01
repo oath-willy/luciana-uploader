@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+python-dotenv
+azure-storage-blob
+python-multipart
+aiohttp
+gunicorn
+azure-storage-file-datalake>=12.9.0

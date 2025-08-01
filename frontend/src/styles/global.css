@@ -1,0 +1,62 @@
+.element-link {
+  text-decoration: none;
+  color: black;
+  cursor: pointer;
+}
+
+.element-link:hover {
+  background-color: #ebebec;
+}
+
+/* 
+  StorageBrowser
+*/
+
+.action-icon {
+  opacity: 0.3;
+  transition: opacity 0.2s ease;
+  padding: 1px;
+}
+
+.action-icon:hover {
+  opacity: 2;
+  cursor: pointer;
+}
+
+.compact-table td,
+.compact-table th {
+  font-size: 13px;
+  vertical-align: middle;
+}
+
+.compact-table thead {
+  background-color: #f1f1f1;
+}
+
+.element-link {
+  font-size: 13px;
+}
+
+.compact-table a,
+.compact-table .element-link {
+  font-size: 13px !important;
+  line-height: 1.2;
+  padding: 0 !important;
+  margin: 0 !important;
+  display: inline-block;
+}
+
+/* 
+  StorageBrowser: PATH
+*/
+
+.breadcrumb-link {
+  cursor: pointer;
+  font-weight: 400; /* grassetto */
+  transition: font-weight 0.2s ease;
+}
+
+.breadcrumb-link:hover .breadcrumb-label {
+  font-weight: 600; /* grassetto */
+  color: #eba800;
+}
