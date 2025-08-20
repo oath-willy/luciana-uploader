@@ -7,6 +7,9 @@ import { Routes, Route } from 'react-router-dom';
 import { Grid } from '@mantine/core';
 import StorageBrowser from '../components/StorageBrowser';
 import MantineStorageBrowser from '../components/MantineStorageBrowser';
+import RunRScript from '../components/RunRScript';
+
+
 
 type UserData = {
   name: string;
@@ -78,6 +81,7 @@ export default function AdminDashboardPage() {
                     <NavLink label="Tests" leftSection={<IconTestPipe size={18} />}>
                       <NavLink label="File Browser" pl="md" component={Link} to="/navigator/file-browser" />
                       <NavLink label="File Browser 2" pl="md" component={Link} to="/navigator/file-browser-bronze" />
+                      <NavLink label="Launch R script" pl="md" component={Link} to="/navigator/run-r-script" />
                     </NavLink>
                     <NavLink label="RStudio" leftSection={<IconCode size={18} />} component={Link} to="http://108.142.241.77:8787/"></NavLink>
                     <NavLink label="GitHub" leftSection={<IconBrandGithub size={18} />} component={Link} to="https://github.com/keystone-dev/luciana-project"></NavLink>
@@ -144,6 +148,15 @@ export default function AdminDashboardPage() {
             <Grid>
               <Grid.Col span={4}>
                 <MantineStorageBrowser containerKey="silver"/>
+              </Grid.Col>
+            </Grid>
+          } />
+
+          {/* LAUNCH R SCRIPT */}
+          <Route path="run-r-script" element={
+            <Grid>
+              <Grid.Col span={12}>
+                <RunRScript />
               </Grid.Col>
             </Grid>
           } />

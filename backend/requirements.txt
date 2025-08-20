@@ -6,3 +6,6 @@ python-multipart
 aiohttp
 gunicorn
 azure-storage-file-datalake>=12.9.0
+paramiko
+azure-identity
+azure-keyvault-secrets

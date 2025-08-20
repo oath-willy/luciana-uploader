@@ -42,17 +42,23 @@ async def list_blobs_in_container(prefix: str = "", container: str = "bronze"):
     blobs = []
     folders = set()
 
+    prefix = prefix.rstrip("/") + "/" if prefix else ""
+
     async for blob in container_client.list_blobs(name_starts_with=prefix):
         full_path = blob.name
-        relative_path = full_path[len(prefix)+1:] if prefix else full_path
+        if not full_path.startswith(prefix):
+            continue  # sicurezza
+
+        relative_path = full_path[len(prefix):]
         parts = relative_path.split("/")
 
         if len(parts) == 1:
-            blobs.append({
-                "name": parts[0],
-                "type": "file",
-                "last_modified": blob.last_modified.isoformat() if blob.last_modified else None
-            })
+            if parts[0] != ".folder-placeholder":
+                blobs.append({
+                    "name": parts[0],
+                    "type": "file",
+                    "last_modified": blob.last_modified.isoformat() if blob.last_modified else None
+                })
         elif len(parts) > 1:
             folders.add(parts[0])
 
@@ -115,7 +121,9 @@ async def delete_folder(prefix: str, container: str = "bronze"):
             print(f"⚠️ Impossibile eliminare directory {prefix}: {e}")
     else:
         container_client = get_blob_container_client(container)
+        prefix = prefix.rstrip("/") + "/"
         async for blob in container_client.list_blobs(name_starts_with=prefix):
+
             blob_client = container_client.get_blob_client(blob.name)
             await blob_client.delete_blob()
 
@@ -123,26 +131,51 @@ async def delete_folder(prefix: str, container: str = "bronze"):
 
 async def rename_blob(old_path: str, new_path: str, container: str = "bronze"):
     container_client = get_blob_container_client(container)
-    old_blob = container_client.get_blob_client(old_path)
     new_blob = container_client.get_blob_client(new_path)
+    if await new_blob.exists():
+        raise HTTPException(status_code=400, detail="Esiste già un file con questo nome.")
+    old_blob = container_client.get_blob_client(old_path)
     await new_blob.start_copy_from_url(old_blob.url)
     await old_blob.delete_blob()
 
 async def rename_folder(old_prefix: str, new_prefix: str, container: str = "bronze"):
     if is_adls_container(container):
         fs_client = get_adls_filesystem(container)
+
         if not old_prefix.endswith("/"):
             old_prefix += "/"
         if not new_prefix.endswith("/"):
             new_prefix += "/"
+
+        print(f"🔍 Controllo conflitti con new_prefix: '{new_prefix}'")
+
+        # Elenca tutti i path esistenti
+        all_paths = []
+        async for p in fs_client.get_paths(path="", recursive=True):
+            all_paths.append(p.name)
+
+        print(f"📦 Trovati {len(all_paths)} path totali")
+
+        # Verifica se esiste già qualcosa con quel prefisso
+        for existing in all_paths:
+            if existing == new_prefix.rstrip("/") or existing.startswith(new_prefix):
+                print(f"⛔️ Conflitto: '{existing}' esiste già (match con '{new_prefix}')")
+                raise HTTPException(status_code=400, detail=f"Conflitto: '{existing}' esiste già")
+
+        print("✅ Nessun conflitto, procedo con rinomina")
+
+        # Crea directory target
         try:
             await fs_client.create_directory(new_prefix)
         except Exception:
             pass
-        paths = []
+
+        # Rinomina tutti i file da old_prefix a new_prefix
+        paths_to_move = []
         async for path in fs_client.get_paths(path=old_prefix, recursive=True):
-            paths.append(path.name)
-        for src_path in sorted(paths, reverse=True):
+            paths_to_move.append(path.name)
+
+        for src_path in sorted(paths_to_move, reverse=True):
             relative = src_path[len(old_prefix):].lstrip("/")
             dest_path = f"{new_prefix}{relative}".replace("//", "/")
             file_client = fs_client.get_file_client(src_path)
@@ -151,19 +184,23 @@ async def rename_folder(old_prefix: str, new_prefix: str, container: str = "bron
             except Exception as e:
                 print(f"❌ Errore rename {src_path} → {dest_path}: {e}")
                 raise HTTPException(status_code=500, detail=f"Errore rename {src_path}: {str(e)}")
+
+        # Elimina cartella vecchia
         try:
             await fs_client.get_directory_client(old_prefix.rstrip("/")).delete_directory()
         except Exception as e:
             print(f"⚠️ Impossibile eliminare directory {old_prefix}: {e}")
     else:
+        # Bronze (Blob)
         container_client = get_blob_container_client(container)
         async for blob in container_client.list_blobs(name_starts_with=old_prefix):
             old_blob = container_client.get_blob_client(blob.name)
             new_name = blob.name.replace(old_prefix, new_prefix, 1)
             new_blob = container_client.get_blob_client(new_name)
+            if await new_blob.exists():
+                raise HTTPException(status_code=400, detail="Esiste già una cartella con questo nome.")
             await new_blob.start_copy_from_url(old_blob.url)
             await old_blob.delete_blob()
-
 
 def get_adls_filesystem(container_key: str = "silver"):
     key_upper = container_key.upper()
