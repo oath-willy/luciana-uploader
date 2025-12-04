@@ -15,7 +15,7 @@ def get_db():
 
 @router.get("/products")
 def get_products(db: Session = Depends(get_db)):
-    rows = db.execute(text("SELECT TOP 500 * FROM products")).fetchall()
+    rows = db.execute(text("SELECT * FROM products_test")).fetchall()
 
     # convert SQL rows to JSON
     data = []
