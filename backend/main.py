@@ -8,6 +8,10 @@ from api.routes import router
 from api import run_script
 from api import run_script_log
 
+from api import products
+app.include_router(products.router, prefix="/api")
+
+
 load_dotenv()
 app = FastAPI()
 

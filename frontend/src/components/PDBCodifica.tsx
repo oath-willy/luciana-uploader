@@ -33,7 +33,7 @@ export default function PDBCodifica() {
   };
 
   const onGridReady = async (params: GridReadyEvent) => {
-    const res = await fetch("/api/pdb/items");
+    const res = await fetch("https://luciana-backend.azurewebsites.net/api/products");
     const data = await res.json();
     setRowData(data);
   };
