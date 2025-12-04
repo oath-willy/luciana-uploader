@@ -1,5 +1,5 @@
 // AdminDashboardPage.tsx - stile Mantine UI con avatar e logout (/.auth/me)
-import { IconHome2, IconSettings, IconLogout, IconTestPipe, IconCode, IconBrandGithub, IconBrowser } from '@tabler/icons-react';
+import { IconHome2, IconSettings, IconLogout, IconTestPipe, IconCode, IconBrandGithub, IconBrowser, IconDatabase } from '@tabler/icons-react';
 import { AppShell, AppShellNavbar, NavLink, ScrollArea, Text, Box, Stack, Group, Avatar, UnstyledButton, Code, Loader } from '@mantine/core';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -9,7 +9,7 @@ import StorageBrowser from '../components/StorageBrowser';
 import MantineStorageBrowser from '../components/MantineStorageBrowser';
 import RunRScript from '../components/RunRScript';
 import RunRScriptLog from '../components/RunRScriptLog';
-
+import PDBCodifica from '../components/PDBCodifica';
 
 type UserData = {
   name: string;
@@ -84,6 +84,9 @@ export default function AdminDashboardPage() {
                       <NavLink label="Launch R script" pl="md" component={Link} to="/navigator/run-r-script" />
                       <NavLink label="Launch R script - With R Log" pl="md" component={Link} to="/navigator/run-r-script-log" />
                     </NavLink>
+                    <NavLink label="PDB" leftSection={<IconDatabase size={18} />}>
+                      <NavLink label="Codifica PDB" pl="md" component={Link} to="/navigator/pdb-codifica" /> 
+                    </NavLink>
                     <NavLink label="RStudio" leftSection={<IconCode size={18} />} component={Link} to="http://108.142.241.77:8787/"></NavLink>
                     <NavLink label="GitHub" leftSection={<IconBrandGithub size={18} />} component={Link} to="https://github.com/keystone-dev/luciana-project"></NavLink>
                     <NavLink label="Settings" leftSection={<IconSettings size={18} />} />
@@ -149,6 +152,15 @@ export default function AdminDashboardPage() {
             <Grid>
               <Grid.Col span={4}>
                 <MantineStorageBrowser containerKey="silver"/>
+              </Grid.Col>
+            </Grid>
+          } />
+
+          {/* PDB - CODIFICA */}
+          <Route path="pdb-codifica" element={
+            <Grid>
+              <Grid.Col span={12}>
+                <PDBCodifica />
               </Grid.Col>
             </Grid>
           } />
