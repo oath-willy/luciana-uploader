@@ -1,0 +1,43 @@
+name: Deploy FastAPI backend to Azure Web App
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+      - '.github/workflows/luciana-backend-deploy.yml'
+
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout del repository
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # Set up Python
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      # Installazione dipendenze
+      - name: Install dependencies
+        working-directory: ./backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          # Creiamo un pacchetto ZIP con tutto il backend
+          zip -r ../backend.zip .
+
+      # Deploy su Azure Web App
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: 'luciana-backend'
+          publish-profile: ${{ secrets.LUCIANA_BACKEND_PUBLISH_PROFILE }}
+          package: 'backend.zip'

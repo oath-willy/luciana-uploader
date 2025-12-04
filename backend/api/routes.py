@@ -33,7 +33,7 @@ class RenameFolderRequest(BaseModel):
     container: str
 
 @router.get("/container")
-async def list_container(prefix: str = "", container: str = "bronze"):
+async def list_container(prefix: str = "", container: str = "bronze"): 
     return {"files": await list_blobs_in_container(prefix=prefix, container=container)}
 
 @router.get("/container-adls")
