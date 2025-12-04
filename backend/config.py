@@ -3,8 +3,8 @@ import urllib
 
 SQL_SERVER   = "lucianasqlserver01.database.windows.net"
 SQL_DATABASE = "luciana_db"
-SQL_USERNAME = "il_tuo_utente_sql"
-SQL_PASSWORD = "la_tua_password_sql"
+SQL_USERNAME = "sqladminuser"
+SQL_PASSWORD = "UnaPasswordForte123!"
 
 connection_string = (
     f"Driver={{ODBC Driver 18 for SQL Server}};"
