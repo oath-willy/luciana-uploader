@@ -4,11 +4,11 @@ import { AgGridReact } from "ag-grid-react";
 import { ModuleRegistry, AllCommunityModule } from "ag-grid-community";
 import type { ColDef } from "ag-grid-community";
 
-// *** IMPORTANTISSIMO: usare i CSS legacy ***
+// CSS legacy (compatibili con v32)
 import "ag-grid-community/dist/styles/ag-grid.css";
 import "ag-grid-community/dist/styles/ag-theme-alpine.css";
 
-// Registrazione moduli AG Grid (Community)
+// Registrazione moduli
 ModuleRegistry.registerModules([AllCommunityModule]);
 
 interface Product {
@@ -24,11 +24,11 @@ const PDBCodifica: React.FC = () => {
   const [filterText, setFilterText] = useState("");
 
   const columnDefs: ColDef<Product>[] = [
-    { headerName: "ID", field: "id", filter: "agTextColumnFilter" },
-    { headerName: "Codice", field: "code", filter: "agTextColumnFilter" },
-    { headerName: "Descrizione", field: "description", filter: "agTextColumnFilter" },
-    { headerName: "Brand", field: "brand", filter: "agTextColumnFilter" },
-    { headerName: "Categoria", field: "category", filter: "agTextColumnFilter" },
+    { headerName: "ID", field: "id", filter: true },
+    { headerName: "Codice", field: "code", filter: true },
+    { headerName: "Descrizione", field: "description", filter: true },
+    { headerName: "Brand", field: "brand", filter: true },
+    { headerName: "Categoria", field: "category", filter: true },
   ];
 
   const onGridReady = useCallback(() => {
@@ -56,13 +56,12 @@ const PDBCodifica: React.FC = () => {
         onChange={(e) => setFilterText(e.target.value)}
       />
 
-      {/* Tema LEGACY: ag-theme-alpine */}
       <div className="ag-theme-alpine" style={{ height: "100%", width: "100%" }}>
-        <AgGridReact<Product>
+        <AgGridReact
           rowData={rowData}
           columnDefs={columnDefs}
           quickFilterText={filterText}
-          rowSelection={{ mode: "multiRow" }}  // nuovo standard AG Grid
+          rowSelection="multiple"
           onGridReady={onGridReady}
           animateRows={true}
         />
