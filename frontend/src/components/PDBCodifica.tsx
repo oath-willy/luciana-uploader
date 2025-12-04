@@ -1,13 +1,14 @@
 import React, { useState, useCallback } from "react";
 import { AgGridReact } from "ag-grid-react";
+
 import { ModuleRegistry, AllCommunityModule } from "ag-grid-community";
 import type { ColDef } from "ag-grid-community";
 
-ModuleRegistry.registerModules([AllCommunityModule]);
-
-// CSS legacy (OK se usi theme="legacy")
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-alpine.css";
+
+// Registrazione moduli AG Grid (deve essere DOPO tutti gli import)
+ModuleRegistry.registerModules([AllCommunityModule]);
 
 interface Product {
   id: number;
@@ -31,9 +32,9 @@ const PDBCodifica: React.FC = () => {
 
   const onGridReady = useCallback(() => {
     fetch(`${process.env.REACT_APP_BACKEND_URL}/api/products`)
-      .then((response) => response.json())
+      .then((res) => res.json())
       .then((data) => setRowData(data))
-      .catch((error) => console.error("Errore:", error));
+      .catch((err) => console.error("Errore:", err));
   }, []);
 
   return (
@@ -51,8 +52,8 @@ const PDBCodifica: React.FC = () => {
       <div style={{ height: "100%", width: "100%" }}>
         <AgGridReact<Product>
           theme="legacy"
-          columnDefs={columnDefs}
           rowData={rowData}
+          columnDefs={columnDefs}
           rowSelection="multiple"
           quickFilterText={filterText}
           onGridReady={onGridReady}
