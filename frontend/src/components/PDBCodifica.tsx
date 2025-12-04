@@ -1,14 +1,13 @@
 import React, { useState, useCallback } from "react";
 import { AgGridReact } from "ag-grid-react";
-
 import { ModuleRegistry, AllCommunityModule } from "ag-grid-community";
 import type { ColDef } from "ag-grid-community";
 
+ModuleRegistry.registerModules([AllCommunityModule]);
+
+// CSS legacy (OK se usi theme="legacy")
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-alpine.css";
-
-// Registrazione moduli AG Grid (v34+)
-ModuleRegistry.registerModules([AllCommunityModule]);
 
 interface Product {
   id: number;
@@ -49,10 +48,11 @@ const PDBCodifica: React.FC = () => {
         onChange={(e) => setFilterText(e.target.value)}
       />
 
-      <div className="ag-theme-alpine" style={{ height: "100%", width: "100%" }}>
+      <div style={{ height: "100%", width: "100%" }}>
         <AgGridReact<Product>
-          rowData={rowData}
+          theme="legacy"
           columnDefs={columnDefs}
+          rowData={rowData}
           rowSelection="multiple"
           quickFilterText={filterText}
           onGridReady={onGridReady}
