@@ -1,13 +1,14 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useState, useCallback } from "react";
 import { AgGridReact } from "ag-grid-react";
+
 import { ModuleRegistry, AllCommunityModule } from "ag-grid-community";
 import type { ColDef } from "ag-grid-community";
 
-// Registrazione moduli AG Grid (obbligatorio v34+)
-ModuleRegistry.registerModules([AllCommunityModule]);
-
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-alpine.css";
+
+// Registrazione moduli AG Grid (v34+)
+ModuleRegistry.registerModules([AllCommunityModule]);
 
 interface Product {
   id: number;
@@ -21,7 +22,6 @@ const PDBCodifica: React.FC = () => {
   const [rowData, setRowData] = useState<Product[]>([]);
   const [filterText, setFilterText] = useState("");
 
-  // CORREZIONE: tipizzazione corretta di ColDef<Product>
   const columnDefs: ColDef<Product>[] = [
     { headerName: "ID", field: "id", filter: true },
     { headerName: "Codice", field: "code", filter: true },
