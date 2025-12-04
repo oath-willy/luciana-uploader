@@ -4,10 +4,11 @@ import { AgGridReact } from "ag-grid-react";
 import { ModuleRegistry, AllCommunityModule } from "ag-grid-community";
 import type { ColDef } from "ag-grid-community";
 
-import "ag-grid-community/styles/ag-grid.css";
-import "ag-grid-community/styles/ag-theme-alpine.css";
+// *** IMPORTANTISSIMO: usare i CSS legacy ***
+import "ag-grid-community/dist/styles/ag-grid.css";
+import "ag-grid-community/dist/styles/ag-theme-alpine.css";
 
-// Registrazione moduli AG Grid (deve essere DOPO tutti gli import)
+// Registrazione moduli AG Grid (Community)
 ModuleRegistry.registerModules([AllCommunityModule]);
 
 interface Product {
@@ -23,18 +24,24 @@ const PDBCodifica: React.FC = () => {
   const [filterText, setFilterText] = useState("");
 
   const columnDefs: ColDef<Product>[] = [
-    { headerName: "ID", field: "id", filter: true },
-    { headerName: "Codice", field: "code", filter: true },
-    { headerName: "Descrizione", field: "description", filter: true },
-    { headerName: "Brand", field: "brand", filter: true },
-    { headerName: "Categoria", field: "category", filter: true },
+    { headerName: "ID", field: "id", filter: "agTextColumnFilter" },
+    { headerName: "Codice", field: "code", filter: "agTextColumnFilter" },
+    { headerName: "Descrizione", field: "description", filter: "agTextColumnFilter" },
+    { headerName: "Brand", field: "brand", filter: "agTextColumnFilter" },
+    { headerName: "Categoria", field: "category", filter: "agTextColumnFilter" },
   ];
 
   const onGridReady = useCallback(() => {
-    fetch(`${process.env.REACT_APP_BACKEND_URL}/api/products`)
+    const url = `${process.env.REACT_APP_BACKEND_URL}/api/products`;
+    console.log("Fetching:", url);
+
+    fetch(url)
       .then((res) => res.json())
-      .then((data) => setRowData(data))
-      .catch((err) => console.error("Errore:", err));
+      .then((data) => {
+        console.log("Dati ricevuti:", data);
+        setRowData(data);
+      })
+      .catch((err) => console.error("Errore fetch:", err));
   }, []);
 
   return (
@@ -49,14 +56,15 @@ const PDBCodifica: React.FC = () => {
         onChange={(e) => setFilterText(e.target.value)}
       />
 
-      <div style={{ height: "100%", width: "100%" }}>
+      {/* Tema LEGACY: ag-theme-alpine */}
+      <div className="ag-theme-alpine" style={{ height: "100%", width: "100%" }}>
         <AgGridReact<Product>
-          theme="legacy"
           rowData={rowData}
           columnDefs={columnDefs}
-          rowSelection="multiple"
           quickFilterText={filterText}
+          rowSelection={{ mode: "multiRow" }}  // nuovo standard AG Grid
           onGridReady={onGridReady}
+          animateRows={true}
         />
       </div>
     </div>
