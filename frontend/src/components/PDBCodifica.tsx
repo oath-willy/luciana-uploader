@@ -1,62 +1,56 @@
-import { useState, useMemo } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { AgGridReact } from "ag-grid-react";
+import { ModuleRegistry, AllCommunityModule } from "ag-grid-community";
+import type { ColDef } from "ag-grid-community";
 
-import type { ColDef, GridReadyEvent } from "ag-grid-community";
+// Registrazione moduli AG Grid (obbligatorio v34+)
+ModuleRegistry.registerModules([AllCommunityModule]);
 
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-alpine.css";
 
-export default function PDBCodifica() {
-  const [rowData, setRowData] = useState<any[]>([]);
+interface Product {
+  id: number;
+  code: string;
+  description: string;
+  brand: string;
+  category: string;
+}
+
+const PDBCodifica: React.FC = () => {
+  const [rowData, setRowData] = useState<Product[]>([]);
   const [filterText, setFilterText] = useState("");
 
-  // Tipizzazione corretta delle colonne
-  const columnDefs: ColDef[] = useMemo(
-    () => [
-      {
-        headerName: "Select",
-        checkboxSelection: true,
-        headerCheckboxSelection: true,
-        width: 60,
-      },
-      { field: "item_code", headerName: "Item Code", filter: true },
-      { field: "brand", headerName: "Brand", filter: true },
-      { field: "prefix", headerName: "Prefix", filter: true },
-      { field: "father_name", headerName: "Father Name", filter: true },
-      { field: "created_at", headerName: "Created At", filter: true },
-    ],
-    []
-  );
+  // CORREZIONE: tipizzazione corretta di ColDef<Product>
+  const columnDefs: ColDef<Product>[] = [
+    { headerName: "ID", field: "id", filter: true },
+    { headerName: "Codice", field: "code", filter: true },
+    { headerName: "Descrizione", field: "description", filter: true },
+    { headerName: "Brand", field: "brand", filter: true },
+    { headerName: "Categoria", field: "category", filter: true },
+  ];
 
-  const onFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFilterText(e.target.value);
-  };
-
-  const onGridReady = async (params: GridReadyEvent) => {
-    const res = await fetch("https://luciana-backend.azurewebsites.net/api/products");
-    const data = await res.json();
-    setRowData(data);
-  };
+  const onGridReady = useCallback(() => {
+    fetch(`${process.env.REACT_APP_BACKEND_URL}/api/products`)
+      .then((response) => response.json())
+      .then((data) => setRowData(data))
+      .catch((error) => console.error("Errore:", error));
+  }, []);
 
   return (
     <div className="p-4 w-full h-[85vh] overflow-hidden">
       <h1 className="text-xl font-semibold mb-4">Codifica PDB</h1>
 
-      <div className="mb-3 flex gap-3 items-center">
-        <input
-          type="text"
-          placeholder="Filtra..."
-          className="border rounded px-3 py-1"
-          value={filterText}
-          onChange={onFilterChange}
-        />
-      </div>
+      <input
+        type="text"
+        placeholder="Filtra..."
+        className="border rounded px-3 py-1 mb-3"
+        value={filterText}
+        onChange={(e) => setFilterText(e.target.value)}
+      />
 
-      <div
-        className="ag-theme-alpine"
-        style={{ height: "100%", width: "100%" }}
-      >
-        <AgGridReact
+      <div className="ag-theme-alpine" style={{ height: "100%", width: "100%" }}>
+        <AgGridReact<Product>
           rowData={rowData}
           columnDefs={columnDefs}
           rowSelection="multiple"
@@ -66,4 +60,6 @@ export default function PDBCodifica() {
       </div>
     </div>
   );
-}
+};
+
+export default PDBCodifica;
