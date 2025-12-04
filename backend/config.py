@@ -18,7 +18,8 @@ connection_string = (
 )
 
 params = urllib.parse.quote_plus(connection_string)
-SQLALCHEMY_DATABASE_URL = f"mssql+pyodbc:///?odbc_connect={params}
+SQLALCHEMY_DATABASE_URL = f"mssql+pyodbc:///?odbc_connect={params}"
+
 
 
 from dotenv import load_dotenv
