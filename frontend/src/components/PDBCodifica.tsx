@@ -39,7 +39,7 @@ export default function PDBCodifica() {
   };
 
   return (
-    <div className="p-4 w-full h-full">
+    <div className="p-4 w-full h-[85vh] overflow-hidden">
       <h1 className="text-xl font-semibold mb-4">Codifica PDB</h1>
 
       <div className="mb-3 flex gap-3 items-center">
@@ -54,7 +54,7 @@ export default function PDBCodifica() {
 
       <div
         className="ag-theme-alpine"
-        style={{ height: "70vh", width: "100%" }}
+        style={{ height: "100%", width: "100%" }}
       >
         <AgGridReact
           rowData={rowData}
