@@ -49,7 +49,7 @@ def run_r_script(request: ScriptRequest = Body(...)):
         if not script_path.endswith(".R"):
             raise HTTPException(status_code=400, detail="Il file deve essere uno script .R")
 
-        hostname = "108.142.241.77"
+        hostname = "20.160.158.80"
         username = "lucianauser"
         print("🔐 Caricamento chiave SSH")
         key = load_ssh_key()

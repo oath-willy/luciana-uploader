@@ -36,7 +36,7 @@ def load_ssh_key():
 def run_r_script_stream(request: ScriptRequest = Body(...)):
     def generate():
         try:
-            hostname = "108.142.241.77"
+            hostname = "20.160.158.80"
             username = "lucianauser"
             key = load_ssh_key()
 

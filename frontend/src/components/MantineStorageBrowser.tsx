@@ -31,9 +31,9 @@ export default function MantineStorageBrowser({ containerKey }: Props) {
 
   const fetchContents = useCallback(() => {
     setLoading(true);
-    const endpoint = containerKey === "silver"
-      ? "/api/container-adls"
-      : "/api/container";
+    const endpoint = containerKey === "bronze"
+      ? "/api/container"
+      : "/api/container-adls";
 
       
       //fetch(`${process.env.REACT_APP_BACKEND_URL || ''}/api/container?prefix=${path}&container=${containerKey}`)

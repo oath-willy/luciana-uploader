@@ -77,6 +77,7 @@ export default function AdminDashboardPage() {
                     <NavLink label="Storage Browser" leftSection={<IconBrowser size={18} />}>
                       <NavLink label="Bronze" pl="md" component={Link} to="/navigator/file-browser-bronze" />
                       <NavLink label="Silver" pl="md" component={Link} to="/navigator/file-browser-silver" />
+                      <NavLink label="Silver" pl="md" component={Link} to="/navigator/file-browser-gold" />
                     </NavLink>
                     <NavLink label="Tests" leftSection={<IconTestPipe size={18} />}>
                       <NavLink label="File Browser" pl="md" component={Link} to="/navigator/file-browser" />
@@ -87,7 +88,7 @@ export default function AdminDashboardPage() {
                     <NavLink label="PDB" leftSection={<IconDatabase size={18} />}>
                       <NavLink label="Codifica PDB" pl="md" component={Link} to="/navigator/pdb-codifica" /> 
                     </NavLink>
-                    <NavLink label="RStudio" leftSection={<IconCode size={18} />} component={Link} to="http://108.142.241.77:8787/"></NavLink>
+                    <NavLink label="RStudio" leftSection={<IconCode size={18} />} component={Link} to="http://20.160.158.80:8787/"></NavLink>
                     <NavLink label="GitHub" leftSection={<IconBrandGithub size={18} />} component={Link} to="https://github.com/keystone-dev/luciana-project"></NavLink>
                     <NavLink label="Settings" leftSection={<IconSettings size={18} />} />
                   </Stack>
