@@ -1,59 +1,47 @@
 import React, { useEffect, useState } from "react";
 import { DataGrid, GridColDef } from "@mui/x-data-grid";
-import { TextField } from "@mui/material";
 
-// Tipo generico per un prodotto
-interface Product {
-  [key: string]: any;
-}
-
-export default function PDBCodifica() {
-  const [rows, setRows] = useState<Product[]>([]);
-  const [filter, setFilter] = useState("");
-
-  useEffect(() => {
-    fetch("https://luciana-backend.azurewebsites.net/api/products")
-      .then((res) => res.json())
-      .then((data: Product[]) => {
-        const rowsWithId = data.map((item: Product, index: number) => ({
-          id: index + 1,  // DataGrid richiede un ID univoco
-          ...item,
-        }));
-        setRows(rowsWithId);
-      })
-      .catch((error) => console.error("Errore fetch prodotti:", error));
-  }, []);
-
-  const filteredRows = rows.filter((row) =>
-    Object.values(row).some((val) =>
-      val?.toString().toLowerCase().includes(filter.toLowerCase())
-    )
-  );
+const PDBFullCodifica = () => {
+  const [rows, setRows] = useState<any[]>([]);
 
   const columns: GridColDef[] = [
-    { field: "COMPANY_ITEMCODE", headerName: "Codice", flex: 1 },
-    { field: "Item_Description_Cleaned", headerName: "Descrizione", flex: 2 },
-    { field: "Sellout_Brand", headerName: "Brand", flex: 1 },
-    { field: "Father_Name", headerName: "Categoria", flex: 1 },
-    { field: "Avg_Price", headerName: "Prezzo Medio", flex: 1, type: "number" },
+    { field: "company_item_code", headerName: "Item Code", width: 180 },
+    { field: "item_description", headerName: "Description", width: 260 },
+    { field: "prefix_encoding", headerName: "Encoding", width: 140 },
+    { field: "prefix_code", headerName: "Prefix Code", width: 140 },
+    { field: "father_name", headerName: "Father Name", width: 160 },
+    { field: "dm_code", headerName: "DM", width: 120 },
+    { field: "ft_code", headerName: "FT", width: 120 },
+    { field: "packaging", headerName: "Packaging", width: 130 },
+    { field: "packaging_unit", headerName: "Unit", width: 120 },
+    { field: "feature", headerName: "Feature", width: 150 },
+    { field: "measure", headerName: "Measure", width: 120 },
+    { field: "extra", headerName: "Extra", width: 120 },
+    { field: "packaging_quantity", headerName: "Qty", width: 100 },
+    { field: "user_nome", headerName: "User Name", width: 140 },
+    { field: "user_cognome", headerName: "User Last Name", width: 140 },
+    { field: "creation_date", headerName: "Created", width: 180 }
   ];
 
-  return (
-    <div style={{ height: "80vh", width: "100%" }}>
-      <TextField
-        fullWidth
-        label="Filtra..."
-        variant="outlined"
-        value={filter}
-        onChange={(e) => setFilter(e.target.value)}
-        style={{ marginBottom: 16 }}
-      />
+  useEffect(() => {
+    fetch(`${process.env.REACT_APP_BACKEND_URL}/api/products/full`)
+      .then((res) => res.json())
+      .then((data) => {
+        const mapped = data.map((row: any, index: number) => ({
+          id: index + 1,
+          ...row
+        }));
+        setRows(mapped);
+      })
+      .catch((err) => console.error(err));
+  }, []);
 
-      <DataGrid
-        rows={filteredRows}
-        columns={columns}
-        pageSizeOptions={[20, 50, 100]}
-      />
+  return (
+    <div style={{ height: "85vh", width: "100%", padding: 20 }}>
+      <h2>PDB - Codifica Completa</h2>
+      <DataGrid rows={rows} columns={columns} pageSizeOptions={[25, 50, 100]} />
     </div>
   );
-}
+};
+
+export default PDBFullCodifica;
