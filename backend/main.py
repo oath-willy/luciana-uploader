@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from api.routes import router
 from api import run_script
 from api import run_script_log
-from api import products
+from backend.api.db import products
 
 load_dotenv()
 
