@@ -1,15 +1,6 @@
-import React, { useState, useCallback } from "react";
-import { AgGridReact } from "ag-grid-react";
-
-import { ModuleRegistry, AllCommunityModule } from "ag-grid-community";
-import type { ColDef } from "ag-grid-community";
-
-// CSS legacy (compatibili con v32)
-import "ag-grid-community/dist/styles/ag-grid.css";
-import "ag-grid-community/dist/styles/ag-theme-alpine.css";
-
-// Registrazione moduli
-ModuleRegistry.registerModules([AllCommunityModule]);
+import React, { useEffect, useState } from "react";
+import { DataGrid, GridColDef } from "@mui/x-data-grid";
+import { Box, TextField, Typography } from "@mui/material";
 
 interface Product {
   id: number;
@@ -20,53 +11,56 @@ interface Product {
 }
 
 const PDBCodifica: React.FC = () => {
-  const [rowData, setRowData] = useState<Product[]>([]);
+  const [rows, setRows] = useState<Product[]>([]);
   const [filterText, setFilterText] = useState("");
 
-  const columnDefs: ColDef<Product>[] = [
-    { headerName: "ID", field: "id", filter: true },
-    { headerName: "Codice", field: "code", filter: true },
-    { headerName: "Descrizione", field: "description", filter: true },
-    { headerName: "Brand", field: "brand", filter: true },
-    { headerName: "Categoria", field: "category", filter: true },
+  const columns: GridColDef[] = [
+    { field: "id", headerName: "ID", width: 90 },
+    { field: "code", headerName: "Codice", width: 150 },
+    { field: "description", headerName: "Descrizione", width: 300 },
+    { field: "brand", headerName: "Brand", width: 180 },
+    { field: "category", headerName: "Categoria", width: 180 },
   ];
 
-  const onGridReady = useCallback(() => {
-    const url = `${process.env.REACT_APP_BACKEND_URL}/api/products`;
-    console.log("Fetching:", url);
-
-    fetch(url)
+  useEffect(() => {
+    fetch(`${process.env.REACT_APP_BACKEND_URL}/api/products`)
       .then((res) => res.json())
-      .then((data) => {
-        console.log("Dati ricevuti:", data);
-        setRowData(data);
-      })
-      .catch((err) => console.error("Errore fetch:", err));
+      .then((data) => setRows(data))
+      .catch((err) => console.error(err));
   }, []);
 
-  return (
-    <div className="p-4 w-full h-[85vh] overflow-hidden">
-      <h1 className="text-xl font-semibold mb-4">Codifica PDB</h1>
+  const filteredRows = rows.filter((r) =>
+    Object.values(r).some((v) =>
+      String(v).toLowerCase().includes(filterText.toLowerCase())
+    )
+  );
 
-      <input
-        type="text"
-        placeholder="Filtra..."
-        className="border rounded px-3 py-1 mb-3"
+  return (
+    <Box sx={{ height: "85vh", width: "100%", p: 2 }}>
+      <Typography variant="h5" sx={{ mb: 2 }}>
+        Codifica PDB
+      </Typography>
+
+      <TextField
+        label="Filtra..."
+        variant="outlined"
+        size="small"
+        sx={{ mb: 2 }}
+        fullWidth
         value={filterText}
         onChange={(e) => setFilterText(e.target.value)}
       />
 
-      <div className="ag-theme-alpine" style={{ height: "100%", width: "100%" }}>
-        <AgGridReact
-          rowData={rowData}
-          columnDefs={columnDefs}
-          quickFilterText={filterText}
-          rowSelection="multiple"
-          onGridReady={onGridReady}
-          animateRows={true}
-        />
-      </div>
-    </div>
+      <DataGrid
+        rows={filteredRows}
+        columns={columns}
+        pageSizeOptions={[25, 50, 100]}
+        initialState={{
+          pagination: { paginationModel: { pageSize: 50 } },
+        }}
+        checkboxSelection
+      />
+    </Box>
   );
 };
 
