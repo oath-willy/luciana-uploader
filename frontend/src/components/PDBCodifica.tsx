@@ -24,7 +24,7 @@ const PDBFullCodifica = () => {
   ];
 
   useEffect(() => {
-    fetch(`${process.env.REACT_APP_BACKEND_URL}/api/products/full`)
+    fetch(`${process.env.REACT_APP_BACKEND_URL}/api/products`)
       .then((res) => res.json())
       .then((data) => {
         const mapped = data.map((row: any, index: number) => ({
