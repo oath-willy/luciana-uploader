@@ -1,68 +1,54 @@
 import React, { useEffect, useState } from "react";
-import { DataGrid, GridColDef } from "@mui/x-data-grid";
-import { Box, TextField, Typography } from "@mui/material";
+import { DataGrid } from "@mui/x-data-grid";
+import { TextField } from "@mui/material";
 
-interface Product {
-  id: number;
-  code: string;
-  description: string;
-  brand: string;
-  category: string;
-}
-
-const PDBCodifica: React.FC = () => {
-  const [rows, setRows] = useState<Product[]>([]);
-  const [filterText, setFilterText] = useState("");
-
-  const columns: GridColDef[] = [
-    { field: "id", headerName: "ID", width: 90 },
-    { field: "code", headerName: "Codice", width: 150 },
-    { field: "description", headerName: "Descrizione", width: 300 },
-    { field: "brand", headerName: "Brand", width: 180 },
-    { field: "category", headerName: "Categoria", width: 180 },
-  ];
+export default function PDBCodifica() {
+  const [rows, setRows] = useState([]);
+  const [filter, setFilter] = useState("");
 
   useEffect(() => {
-    fetch(`${process.env.REACT_APP_BACKEND_URL}/api/products`)
+    fetch("https://luciana-backend.azurewebsites.net/api/products")
       .then((res) => res.json())
-      .then((data) => setRows(data))
-      .catch((err) => console.error(err));
+      .then((data) => {
+        const rowsWithId = data.map((item, index) => ({
+          id: index + 1,  // DataGrid richiede un ID univoco
+          ...item
+        }));
+        setRows(rowsWithId);
+      })
+      .catch((error) => console.error("Errore fetch prodotti:", error));
   }, []);
 
-  const filteredRows = rows.filter((r) =>
-    Object.values(r).some((v) =>
-      String(v).toLowerCase().includes(filterText.toLowerCase())
+  const filteredRows = rows.filter((row) =>
+    Object.values(row).some((val) =>
+      val?.toString().toLowerCase().includes(filter.toLowerCase())
     )
   );
 
-  return (
-    <Box sx={{ height: "85vh", width: "100%", p: 2 }}>
-      <Typography variant="h5" sx={{ mb: 2 }}>
-        Codifica PDB
-      </Typography>
+  const columns = [
+    { field: "COMPANY_ITEMCODE", headerName: "Codice", flex: 1 },
+    { field: "Item_Description_Cleaned", headerName: "Descrizione", flex: 2 },
+    { field: "Sellout_Brand", headerName: "Brand", flex: 1 },
+    { field: "Father_Name", headerName: "Categoria", flex: 1 },
+    { field: "Avg_Price", headerName: "Prezzo Medio", flex: 1, type: "number" },
+  ];
 
+  return (
+    <div style={{ height: "80vh", width: "100%" }}>
       <TextField
+        fullWidth
         label="Filtra..."
         variant="outlined"
-        size="small"
-        sx={{ mb: 2 }}
-        fullWidth
-        value={filterText}
-        onChange={(e) => setFilterText(e.target.value)}
+        value={filter}
+        onChange={(e) => setFilter(e.target.value)}
+        style={{ marginBottom: 16 }}
       />
 
       <DataGrid
         rows={filteredRows}
         columns={columns}
-        getRowId={(row) => row.COMPANY_ITEMCODE}  // <-- QUESTA È LA SOLUZIONE
-        pageSizeOptions={[25, 50, 100]}
-        initialState={{
-          pagination: { paginationModel: { pageSize: 50 } },
-        }}
-        checkboxSelection
+        pageSizeOptions={[20, 50, 100]}
       />
-    </Box>
+    </div>
   );
-};
-
-export default PDBCodifica;
+}
