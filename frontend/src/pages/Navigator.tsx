@@ -77,7 +77,7 @@ export default function AdminDashboardPage() {
                     <NavLink label="Storage Browser" leftSection={<IconBrowser size={18} />}>
                       <NavLink label="Bronze" pl="md" component={Link} to="/navigator/file-browser-bronze" />
                       <NavLink label="Silver" pl="md" component={Link} to="/navigator/file-browser-silver" />
-                      <NavLink label="Silver" pl="md" component={Link} to="/navigator/file-browser-gold" />
+                      <NavLink label="Gold" pl="md" component={Link} to="/navigator/file-browser-gold" />
                     </NavLink>
                     <NavLink label="Tests" leftSection={<IconTestPipe size={18} />}>
                       <NavLink label="File Browser" pl="md" component={Link} to="/navigator/file-browser" />

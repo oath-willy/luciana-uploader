@@ -54,6 +54,7 @@ const PDBCodifica: React.FC = () => {
       <DataGrid
         rows={filteredRows}
         columns={columns}
+        getRowId={(row) => row.COMPANY_ITEMCODE}  // <-- QUESTA È LA SOLUZIONE
         pageSizeOptions={[25, 50, 100]}
         initialState={{
           pagination: { paginationModel: { pageSize: 50 } },
