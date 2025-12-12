@@ -27,8 +27,6 @@ import {
 } from '@mantine/core';
 import { useEffect, useState } from 'react';
 import { Link, Routes, Route } from 'react-router-dom';
-import { Grid } from '@mantine/core';
-import StorageBrowser from '../components/StorageBrowser';
 import MantineStorageBrowser from '../components/MantineStorageBrowser';
 import RunRScript from '../components/RunRScript';
 import RunRScriptLog from '../components/RunRScriptLog';
