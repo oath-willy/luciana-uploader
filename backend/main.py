@@ -18,7 +18,11 @@ frontend_origin = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[frontend_origin],
+    #allow_origins=[frontend_origin],
+    allow_origins=[
+        "http://localhost:3000",   # frontend locale (CRA)
+        "https://yellow-forest-0ad79d503.6.azurestaticapps.net",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
