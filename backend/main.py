@@ -1,16 +1,16 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 import os
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import HTTPException
-from dotenv import load_dotenv
 
 from api.routes import router
 from api import run_script
 from api import run_script_log
 from api.db import products
-
-load_dotenv()
 
 app = FastAPI()
 
