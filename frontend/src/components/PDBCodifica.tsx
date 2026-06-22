@@ -1,16 +1,19 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   DataGrid,
   GridColDef,
-  GridFilterModel,
   GridPagination,
+  GridPaginationModel,
   GridRowSelectionModel,
 } from "@mui/x-data-grid";
 import {
   Alert,
+  Autocomplete,
   Box,
   Button,
   FormControl,
+  IconButton,
+  InputAdornment,
   InputLabel,
   MenuItem,
   Select,
@@ -24,10 +27,12 @@ type Company = {
 };
 
 type CompanyRole = "any" | "dealer" | "manufacturer";
+type ColumnFilters = Record<string, string>;
 
 const backendBaseUrl = process.env.REACT_APP_BACKEND_URL || "";
+const pageSizeOptions = [25, 50, 100, 250, 500, 1000, { value: -1, label: "Full" }];
 
-const columns: GridColDef[] = [
+const baseColumns: GridColDef[] = [
   { field: "id_prod_version", headerName: "Prod Version ID", width: 130 },
   { field: "id_prod", headerName: "Prod ID", width: 90 },
   { field: "company_item_code", headerName: "Item Code", width: 170 },
@@ -88,14 +93,23 @@ const columns: GridColDef[] = [
 
 export default function Products() {
   const [companies, setCompanies] = useState<Company[]>([]);
-  const [selectedCompanyId, setSelectedCompanyId] = useState("");
+  const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
   const [companyRole, setCompanyRole] = useState<CompanyRole>("any");
   const [rows, setRows] = useState<any[]>([]);
+  const [rowCount, setRowCount] = useState(0);
   const [loadingCompanies, setLoadingCompanies] = useState(true);
   const [loadingRows, setLoadingRows] = useState(false);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
-  const [filterModel, setFilterModel] = useState<GridFilterModel>({ items: [] });
+  const [columnFilters, setColumnFilters] = useState<ColumnFilters>({});
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [debouncedColumnFilters, setDebouncedColumnFilters] = useState<ColumnFilters>({});
+  const [hasExecuted, setHasExecuted] = useState(false);
+  const [runToken, setRunToken] = useState(0);
+  const [paginationModel, setPaginationModel] = useState<GridPaginationModel>({
+    page: 0,
+    pageSize: 100,
+  });
   const [rowSelectionModel, setRowSelectionModel] =
     useState<GridRowSelectionModel>({
       type: "include",
@@ -114,34 +128,37 @@ export default function Products() {
       .finally(() => setLoadingCompanies(false));
   }, []);
 
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setDebouncedSearch(search);
+      setDebouncedColumnFilters(columnFilters);
+    }, 450);
+
+    return () => window.clearTimeout(timeout);
+  }, [search, columnFilters]);
+
   const selectedCount =
     rowSelectionModel.type === "include"
       ? rowSelectionModel.ids.size
-      : rows.length - rowSelectionModel.ids.size;
+      : Math.max(rowCount - rowSelectionModel.ids.size, 0);
 
-  const selectedCompany = useMemo(
-    () => companies.find((company) => String(company.id) === selectedCompanyId),
-    [companies, selectedCompanyId]
+  const hasActiveFilters = useMemo(
+    () =>
+      Boolean(search.trim()) ||
+      Object.values(columnFilters).some((value) => value.trim()),
+    [search, columnFilters]
   );
 
-  const handleSearchChange = (value: string) => {
-    setSearch(value);
-    setFilterModel({
-      items: value
-        ? [
-            {
-              field: "description",
-              operator: "contains",
-              value,
-            },
-          ]
-        : [],
-    });
-  };
+  const cleanFilters = useCallback((filters: ColumnFilters) => {
+    return Object.fromEntries(
+      Object.entries(filters)
+        .map(([field, value]) => [field, value.trim()])
+        .filter(([, value]) => value)
+    );
+  }, []);
 
-  const handleRun = async () => {
-    if (!selectedCompanyId) {
-      setError("Seleziona una company prima di eseguire la query.");
+  const fetchProducts = useCallback(async () => {
+    if (!selectedCompany) {
       return;
     }
 
@@ -150,12 +167,18 @@ export default function Products() {
     setRows([]);
 
     try {
+      const isFull = paginationModel.pageSize === -1;
       const response = await fetch(`${backendBaseUrl}/api/products/search`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          id_company: Number(selectedCompanyId),
+          id_company: selectedCompany.id,
           company_role: companyRole,
+          page: isFull ? 0 : paginationModel.page,
+          page_size: isFull ? 1000 : paginationModel.pageSize,
+          full: isFull,
+          search: debouncedSearch.trim(),
+          filters: cleanFilters(debouncedColumnFilters),
         }),
       });
 
@@ -165,18 +188,139 @@ export default function Products() {
       }
 
       const data = await response.json();
+      const responseRows = Array.isArray(data) ? data : data.rows || [];
+      const responseTotal = Array.isArray(data) ? responseRows.length : data.total || 0;
+
       setRows(
-        data.map((row: any, index: number) => ({
-          id: `${row.id_prod_version ?? "pv"}-${row.id_pack_qty ?? "pq"}-${row.id_split ?? "sp"}-${index}`,
+        responseRows.map((row: any, index: number) => ({
+          id: `${row.id_prod_version ?? "pv"}-${row.id_pack_qty ?? "pq"}-${row.id_split ?? "sp"}-${paginationModel.page}-${index}`,
           ...row,
         }))
       );
+      setRowCount(responseTotal);
     } catch (err: any) {
       setError(err.message || "Errore generico");
+      setRowCount(0);
     } finally {
       setLoadingRows(false);
     }
+  }, [
+    selectedCompany,
+    companyRole,
+    paginationModel,
+    debouncedSearch,
+    debouncedColumnFilters,
+    cleanFilters,
+  ]);
+
+  useEffect(() => {
+    if (hasExecuted) {
+      fetchProducts();
+    }
+  }, [hasExecuted, fetchProducts, runToken]);
+
+  const handleRun = () => {
+    if (!selectedCompany) {
+      setError("Seleziona una company prima di eseguire la query.");
+      return;
+    }
+
+    setHasExecuted(true);
+    setPaginationModel((current) => ({ ...current, page: 0 }));
+    setRunToken((current) => current + 1);
   };
+
+  const handleSearchChange = (value: string) => {
+    setSearch(value);
+    setPaginationModel((current) => ({ ...current, page: 0 }));
+  };
+
+  const handleColumnFilterChange = useCallback((field: string, value: string) => {
+    setColumnFilters((current) => ({
+      ...current,
+      [field]: value,
+    }));
+    setPaginationModel((current) => ({ ...current, page: 0 }));
+  }, []);
+
+  const clearColumnFilter = useCallback((field: string) => {
+    setColumnFilters((current) => {
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
+    setPaginationModel((current) => ({ ...current, page: 0 }));
+  }, []);
+
+  const clearAllFilters = () => {
+    setSearch("");
+    setColumnFilters({});
+    setPaginationModel((current) => ({ ...current, page: 0 }));
+  };
+
+  const columns = useMemo(
+    () =>
+      baseColumns.map((column) => ({
+        ...column,
+        renderHeader: () => {
+          const value = columnFilters[column.field] || "";
+
+          return (
+            <Box sx={{ width: "100%", py: 0.5 }}>
+              <Box
+                sx={{
+                  fontSize: 12,
+                  fontWeight: 700,
+                  lineHeight: 1.1,
+                  mb: 0.5,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+                title={column.headerName}
+              >
+                {column.headerName}
+              </Box>
+              <TextField
+                value={value}
+                onChange={(event) =>
+                  handleColumnFilterChange(column.field, event.target.value)
+                }
+                onClick={(event) => event.stopPropagation()}
+                onKeyDown={(event) => event.stopPropagation()}
+                placeholder="Filtro"
+                size="small"
+                variant="outlined"
+                fullWidth
+                inputProps={{
+                  "aria-label": `Filtro ${column.headerName}`,
+                  style: { fontSize: 12, padding: "4px 0 4px 6px" },
+                }}
+                InputProps={{
+                  sx: { height: 28, fontSize: 12, pr: value ? 0.25 : 0 },
+                  endAdornment: value ? (
+                    <InputAdornment position="end">
+                      <IconButton
+                        aria-label={`Svuota filtro ${column.headerName}`}
+                        size="small"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          clearColumnFilter(column.field);
+                        }}
+                        sx={{ width: 20, height: 20, fontSize: 12 }}
+                      >
+                        x
+                      </IconButton>
+                    </InputAdornment>
+                  ) : undefined,
+                }}
+              />
+            </Box>
+          );
+        },
+      })),
+    [columnFilters, handleColumnFilterChange, clearColumnFilter]
+  );
 
   return (
     <Box sx={{ height: "89vh", width: "100%", p: 0 }}>
@@ -193,23 +337,25 @@ export default function Products() {
         <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, flexWrap: "wrap" }}>
           <h2 style={{ margin: 0 }}>Products</h2>
 
-          <FormControl size="small" sx={{ minWidth: 320 }}>
-            <InputLabel id="products-company-label">Company</InputLabel>
-            <Select
-              labelId="products-company-label"
-              label="Company"
-              value={selectedCompanyId}
-              onChange={(event) => setSelectedCompanyId(event.target.value)}
-              disabled={loadingCompanies}
-            >
-              {companies.map((company) => (
-                <MenuItem key={company.id} value={String(company.id)}>
-                  {company.company_name}
-                  {company.company_code ? ` (${company.company_code})` : ""}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          <Autocomplete
+            size="small"
+            options={companies}
+            value={selectedCompany}
+            onChange={(_, value) => {
+              setSelectedCompany(value);
+              setPaginationModel((current) => ({ ...current, page: 0 }));
+            }}
+            loading={loadingCompanies}
+            disabled={loadingCompanies}
+            getOptionLabel={(company) =>
+              `${company.company_name}${company.company_code ? ` (${company.company_code})` : ""}`
+            }
+            isOptionEqualToValue={(option, value) => option.id === value.id}
+            renderInput={(params) => (
+              <TextField {...params} label="Company" placeholder="Scrivi per filtrare" />
+            )}
+            sx={{ minWidth: 320 }}
+          />
 
           <FormControl size="small" sx={{ minWidth: 170 }}>
             <InputLabel id="products-role-label">Role</InputLabel>
@@ -217,7 +363,10 @@ export default function Products() {
               labelId="products-role-label"
               label="Role"
               value={companyRole}
-              onChange={(event) => setCompanyRole(event.target.value as CompanyRole)}
+              onChange={(event) => {
+                setCompanyRole(event.target.value as CompanyRole);
+                setPaginationModel((current) => ({ ...current, page: 0 }));
+              }}
             >
               <MenuItem value="any">Any</MenuItem>
               <MenuItem value="dealer">Dealer</MenuItem>
@@ -228,19 +377,40 @@ export default function Products() {
           <Button
             variant="contained"
             onClick={handleRun}
-            disabled={loadingCompanies || loadingRows || !selectedCompanyId}
+            disabled={loadingCompanies || loadingRows || !selectedCompany}
           >
             {loadingRows ? "Esecuzione..." : "Esegui"}
           </Button>
         </Box>
 
-        <TextField
-          size="small"
-          placeholder="Find in description..."
-          value={search}
-          onChange={(event) => handleSearchChange(event.target.value)}
-          sx={{ width: 260 }}
-        />
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
+          <TextField
+            size="small"
+            placeholder="Find in description..."
+            value={search}
+            onChange={(event) => handleSearchChange(event.target.value)}
+            sx={{ width: 260 }}
+            InputProps={{
+              endAdornment: search ? (
+                <InputAdornment position="end">
+                  <IconButton
+                    aria-label="Svuota ricerca descrizione"
+                    size="small"
+                    onClick={() => handleSearchChange("")}
+                    sx={{ width: 24, height: 24, fontSize: 12 }}
+                  >
+                    x
+                  </IconButton>
+                </InputAdornment>
+              ) : undefined,
+            }}
+          />
+          {hasActiveFilters && (
+            <Button variant="outlined" onClick={clearAllFilters}>
+              Rimuovi filtri
+            </Button>
+          )}
+        </Box>
       </Box>
 
       {selectedCompany && (
@@ -260,9 +430,12 @@ export default function Products() {
         columns={columns}
         loading={loadingRows}
         rowHeight={28}
-        pageSizeOptions={[25, 50, 100]}
-        filterModel={filterModel}
-        onFilterModelChange={setFilterModel}
+        columnHeaderHeight={76}
+        paginationMode="server"
+        rowCount={rowCount}
+        paginationModel={paginationModel}
+        onPaginationModelChange={(model) => setPaginationModel(model)}
+        pageSizeOptions={pageSizeOptions}
         checkboxSelection
         disableRowSelectionOnClick
         rowSelectionModel={rowSelectionModel}
@@ -271,7 +444,11 @@ export default function Products() {
         }
         slots={{
           footer: () => (
-            <CustomFooter selectedCount={selectedCount} rowCount={rows.length} />
+            <CustomFooter
+              selectedCount={selectedCount}
+              loadedCount={rows.length}
+              rowCount={rowCount}
+            />
           ),
         }}
       />
@@ -281,9 +458,11 @@ export default function Products() {
 
 function CustomFooter({
   selectedCount,
+  loadedCount,
   rowCount,
 }: {
   selectedCount: number;
+  loadedCount: number;
   rowCount: number;
 }) {
   return (
@@ -300,7 +479,7 @@ function CustomFooter({
       <Box sx={{ fontSize: 13, color: "text.secondary" }}>
         {selectedCount > 0
           ? `${selectedCount} righe selezionate`
-          : `${rowCount} righe caricate`}
+          : `${loadedCount} righe visualizzate su ${rowCount} totali`}
       </Box>
 
       <GridPagination />
