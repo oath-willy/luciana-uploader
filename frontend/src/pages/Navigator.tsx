@@ -129,9 +129,9 @@ export default function AdminDashboardPage() {
                     )}
                   </NavLink>
 
-                  <NavLink label={!navCollapsed ? "PDB" : ""} leftSection={<IconDatabase size={18} />}>
+                  <NavLink label={!navCollapsed ? "Products" : ""} leftSection={<IconDatabase size={18} />}>
                     {!navCollapsed && (
-                      <NavLink label="Codifica PDB" pl="md" component={Link} to="/navigator/pdb-codifica" />
+                      <NavLink label="Products" pl="md" component={Link} to="/navigator/pdb-codifica" />
                     )}
                   </NavLink>
 
