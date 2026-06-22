@@ -17,11 +17,12 @@ CompanyRole = Literal["dealer", "manufacturer", "any"]
 class ProductSearchRequest(BaseModel):
     id_company: int
     company_role: CompanyRole = "any"
+    max_rows: int = 5000
 
 
 PRODUCTS_QUERY = text(
     """
-    SELECT
+    SELECT TOP (:max_rows)
         pv.id AS id_prod_version,
         pv.id_prod,
         p.company_item_code,
@@ -211,12 +212,15 @@ def get_product_companies(db: Session = Depends(get_db)):
 def search_products(request: ProductSearchRequest, db: Session = Depends(get_db)):
     if request.id_company <= 0:
         raise HTTPException(status_code=400, detail="Company non valida")
+    if request.max_rows < 1 or request.max_rows > 10000:
+        raise HTTPException(status_code=400, detail="max_rows deve essere tra 1 e 10000")
 
     rows = db.execute(
         PRODUCTS_QUERY,
         {
             "id_company": request.id_company,
             "company_role": request.company_role,
+            "max_rows": request.max_rows,
         },
     ).fetchall()
 
