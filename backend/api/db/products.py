@@ -141,6 +141,33 @@ PRODUCT_LOOKUP_SOURCES = {
         SELECT id, CONCAT(COALESCE(nome, ''), ' ', COALESCE(cognome, '')) AS label, NULL AS code
         FROM dbo.users
     """,
+    "mc_lvl1": """
+        SELECT DISTINCT
+            mc1.id,
+            RIGHT(CONCAT('00', COALESCE(CONVERT(NVARCHAR(20), mc1.code), '')), 2) AS label,
+            RIGHT(CONCAT('00', COALESCE(CONVERT(NVARCHAR(20), mc1.code), '')), 2) AS code
+        FROM dbo.master_code AS mc
+        JOIN dbo.mc_lvl1 AS mc1 ON mc1.id = mc.id_mc_lvl1
+    """,
+    "mc_lvl2": """
+        SELECT DISTINCT
+            mc2.id,
+            RIGHT(CONCAT('00', COALESCE(CONVERT(NVARCHAR(20), mc2.code), '')), 2) AS label,
+            RIGHT(CONCAT('00', COALESCE(CONVERT(NVARCHAR(20), mc2.code), '')), 2) AS code,
+            mc.id_mc_lvl1
+        FROM dbo.master_code AS mc
+        JOIN dbo.mc_lvl2 AS mc2 ON mc2.id = mc.id_mc_lvl2
+    """,
+    "mc_lvl3": """
+        SELECT DISTINCT
+            mc3.id,
+            RIGHT(CONCAT('00', COALESCE(CONVERT(NVARCHAR(20), mc3.code), '')), 2) AS label,
+            RIGHT(CONCAT('00', COALESCE(CONVERT(NVARCHAR(20), mc3.code), '')), 2) AS code,
+            mc.id_mc_lvl1,
+            mc.id_mc_lvl2
+        FROM dbo.master_code AS mc
+        JOIN dbo.mc_lvl3 AS mc3 ON mc3.id = mc.id_mc_lvl3
+    """,
 }
 
 
@@ -403,16 +430,55 @@ def get_product_lookup(
     lookup_key: str,
     q: str = "",
     limit: int = 50,
+    id_mc_lvl1: int | None = None,
+    id_mc_lvl2: int | None = None,
     db: Session = Depends(get_db),
 ):
     if lookup_key not in PRODUCT_LOOKUP_SOURCES:
         raise HTTPException(status_code=404, detail="Lookup non trovato")
 
     safe_limit = min(max(limit, 1), 100)
-    return jsonable_encoder(_fetch_product_lookup(db, lookup_key, q, safe_limit))
+    return jsonable_encoder(
+        _fetch_product_lookup(
+            db,
+            lookup_key,
+            q,
+            safe_limit,
+            id_mc_lvl1=id_mc_lvl1,
+            id_mc_lvl2=id_mc_lvl2,
+        )
+    )
 
 
-def _fetch_product_lookup(db: Session, lookup_key: str, q: str, limit: int):
+def _fetch_product_lookup(
+    db: Session,
+    lookup_key: str,
+    q: str,
+    limit: int,
+    id_mc_lvl1: int | None = None,
+    id_mc_lvl2: int | None = None,
+):
+    parent_conditions = []
+    params = {
+        "q": q.strip(),
+        "q_like": f"%{q.strip()}%",
+        "id_mc_lvl1": id_mc_lvl1,
+        "id_mc_lvl2": id_mc_lvl2,
+    }
+
+    if lookup_key in {"mc_lvl2", "mc_lvl3"}:
+        parent_conditions.append(
+            "(:id_mc_lvl1 IS NULL OR id_mc_lvl1 = :id_mc_lvl1)"
+        )
+    if lookup_key == "mc_lvl3":
+        parent_conditions.append(
+            "(:id_mc_lvl2 IS NULL OR id_mc_lvl2 = :id_mc_lvl2)"
+        )
+
+    parent_clause = ""
+    if parent_conditions:
+        parent_clause = " AND " + " AND ".join(parent_conditions)
+
     query = text(
         f"""
         SELECT TOP ({limit})
@@ -423,13 +489,16 @@ def _fetch_product_lookup(db: Session, lookup_key: str, q: str, limit: int):
             {PRODUCT_LOOKUP_SOURCES[lookup_key]}
         ) AS lookup_source
         WHERE
-            :q = ''
-            OR COALESCE(CONVERT(NVARCHAR(4000), label), '') LIKE :q_like
-            OR COALESCE(CONVERT(NVARCHAR(4000), code), '') LIKE :q_like
+            (
+                :q = ''
+                OR COALESCE(CONVERT(NVARCHAR(4000), label), '') LIKE :q_like
+                OR COALESCE(CONVERT(NVARCHAR(4000), code), '') LIKE :q_like
+            )
+            {parent_clause}
         ORDER BY label
         """
     )
-    rows = db.execute(query, {"q": q.strip(), "q_like": f"%{q.strip()}%"}).fetchall()
+    rows = db.execute(query, params).fetchall()
     return [dict(row._mapping) for row in rows]
 
 

@@ -41,6 +41,7 @@ type LookupOption = {
   code?: string | null;
 };
 type ProductLookups = Record<string, LookupOption[]>;
+type LookupSearchParams = Record<string, string | number | null | undefined>;
 
 type ProductsProps = {
   title?: string;
@@ -115,7 +116,9 @@ const lookupFields: Record<string, string> = {
   id_prefix_encoding: "prefix_encodings",
   id_prefix_code: "prefix_codes",
   id_father_name: "father_names",
-  id_mc: "master_codes",
+  id_mc_lvl1: "mc_lvl1",
+  id_mc_lvl2: "mc_lvl2",
+  id_mc_lvl3: "mc_lvl3",
   id_pack: "packs",
   id_pack_measure_unit: "pack_measure_units",
   id_feature: "features",
@@ -130,12 +133,24 @@ const relatedLabelFields: Record<string, string[]> = {
   id_prefix_encoding: ["prefix_encoding"],
   id_prefix_code: ["prefix_code"],
   id_father_name: ["father_name"],
+  id_mc_lvl1: ["mc_lvl1_code"],
+  id_mc_lvl2: ["mc_lvl2_code"],
+  id_mc_lvl3: ["mc_lvl3_code"],
   id_pack: ["pack"],
   id_pack_measure_unit: ["pack_measure_unit"],
   id_feature: ["feature"],
   id_measure: ["measure"],
   id_parent_prod: ["parent_company_item_code"],
 };
+
+const staticLookupKeys = [
+  "companies",
+  "prefix_encodings",
+  "prefix_codes",
+  "father_names",
+  "packs",
+  "products",
+];
 
 export default function Products({
   title = "Products",
@@ -181,7 +196,11 @@ export default function Products({
       .finally(() => setLoadingCompanies(false));
   }, []);
 
-  const fetchProductLookup = useCallback(async (lookupKey: string, query = "") => {
+  const fetchProductLookup = useCallback(async (
+    lookupKey: string,
+    query = "",
+    extraParams: LookupSearchParams = {}
+  ) => {
     if (loadingLookups[lookupKey]) {
       return;
     }
@@ -191,6 +210,11 @@ export default function Products({
       const params = new URLSearchParams({
         q: query,
         limit: "50",
+      });
+      Object.entries(extraParams).forEach(([key, value]) => {
+        if (value !== null && value !== undefined && value !== "") {
+          params.set(key, String(value));
+        }
       });
       const response = await fetch(
         `${backendBaseUrl}/api/products/lookups/${lookupKey}?${params.toString()}`
@@ -321,8 +345,16 @@ export default function Products({
 
       setSelectedProduct(params.row);
       setDraftProduct(params.row);
-      Array.from(new Set(Object.values(lookupFields))).forEach((lookupKey) => {
+      staticLookupKeys.forEach((lookupKey) => {
         fetchProductLookup(lookupKey);
+      });
+      fetchProductLookup("mc_lvl1");
+      fetchProductLookup("mc_lvl2", "", {
+        id_mc_lvl1: params.row.id_mc_lvl1,
+      });
+      fetchProductLookup("mc_lvl3", "", {
+        id_mc_lvl1: params.row.id_mc_lvl1,
+        id_mc_lvl2: params.row.id_mc_lvl2,
       });
     },
     [enableDetailPanel, fetchProductLookup]
@@ -346,9 +378,49 @@ export default function Products({
 
       const labelFields = relatedLabelFields[field] || [];
       if (option && labelFields.length > 0) {
-        next[labelFields[0]] = option.label;
+        next[labelFields[0]] = field.startsWith("id_mc_lvl")
+          ? formatMcCode(option.code || option.label)
+          : option.label;
         if (labelFields[1]) {
           next[labelFields[1]] = option.code || "";
+        }
+      }
+
+      if (field === "id_mc_lvl1") {
+        next.id_mc = null;
+        next.id_mc_lvl2 = null;
+        next.mc_lvl2_code = "";
+        next.mc_lvl2_desc = "";
+        next.mc_lvl2_status_code = "";
+        next.id_mc_lvl3 = null;
+        next.mc_lvl3_code = "";
+        next.mc_lvl3_desc = "";
+        next.mc_lvl3_status_code = "";
+        setProductLookups((currentLookups) => ({
+          ...currentLookups,
+          mc_lvl2: [],
+          mc_lvl3: [],
+        }));
+        if (value) {
+          fetchProductLookup("mc_lvl2", "", { id_mc_lvl1: value });
+        }
+      }
+
+      if (field === "id_mc_lvl2") {
+        next.id_mc = null;
+        next.id_mc_lvl3 = null;
+        next.mc_lvl3_code = "";
+        next.mc_lvl3_desc = "";
+        next.mc_lvl3_status_code = "";
+        setProductLookups((currentLookups) => ({
+          ...currentLookups,
+          mc_lvl3: [],
+        }));
+        if (value) {
+          fetchProductLookup("mc_lvl3", "", {
+            id_mc_lvl1: next.id_mc_lvl1,
+            id_mc_lvl2: value,
+          });
         }
       }
 
@@ -645,9 +717,22 @@ function ProductDetailPanel({
   lookups: ProductLookups;
   loadingLookups: Record<string, boolean>;
   onChange: (field: string, value: any, option?: LookupOption | null) => void;
-  onLookupSearch: (lookupKey: string, query?: string) => void;
+  onLookupSearch: (
+    lookupKey: string,
+    query?: string,
+    extraParams?: LookupSearchParams
+  ) => void;
   onClose: () => void;
 }) {
+  const metaItems = [
+    ["Prod Version ID", product.id_prod_version],
+    ["Prod ID", product.id_prod],
+    ["Version", product.version],
+    ["Current", product.is_current ? "Yes" : "No"],
+    ["Created", product.prod_version_data_creation],
+    ["User Name", [product.user_nome, product.user_cognome].filter(Boolean).join(" ")],
+  ].filter(([, value]) => value !== null && value !== undefined && value !== "");
+
   return (
     <Paper
       elevation={1}
@@ -666,18 +751,40 @@ function ProductDetailPanel({
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
+          gap: 1.5,
           px: 1.5,
           py: 1,
           borderBottom: "1px solid #e0e0e0",
         }}
       >
-        <Box>
+        <Box sx={{ minWidth: 0 }}>
           <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
-            Scheda prodotto
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
             {product.company_item_code || "Prodotto senza codice"}
           </Typography>
+          <Box
+            sx={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 0.75,
+              mt: 0.5,
+            }}
+          >
+            {metaItems.map(([label, value]) => (
+              <Box
+                key={label}
+                sx={{
+                  fontSize: 12,
+                  color: "text.secondary",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                <Box component="span" sx={{ fontWeight: 700, color: "text.primary" }}>
+                  {label}:
+                </Box>{" "}
+                {String(value)}
+              </Box>
+            ))}
+          </Box>
         </Box>
 
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
@@ -693,28 +800,240 @@ function ProductDetailPanel({
           flex: 1,
           overflow: "auto",
           p: 1.5,
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-          gap: 1.25,
-          alignContent: "start",
         }}
       >
-        {baseColumns.map((column) => (
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: { xs: "1fr", md: "280px minmax(320px, 1fr)" },
+            gap: 1.25,
+            mb: 1.25,
+          }}
+        >
           <ProductDetailField
-            key={column.field}
-            field={column.field}
-            label={column.headerName || column.field}
-            value={product[column.field]}
-            type={column.type}
+            field="company_item_code"
+            label="Item Code"
+            value={product.company_item_code}
             lookups={lookups}
-            currentDisplayValue={getRelatedDisplayValue(product, column.field)}
             loadingLookups={loadingLookups}
             onChange={onChange}
             onLookupSearch={onLookupSearch}
           />
-        ))}
+          <ProductDetailField
+            field="description"
+            label="Description"
+            value={product.description}
+            lookups={lookups}
+            loadingLookups={loadingLookups}
+            multiline
+            minRows={2}
+            onChange={onChange}
+            onLookupSearch={onLookupSearch}
+          />
+        </Box>
+
+        <DetailGrid>
+          <ProductDetailField
+            field="id_dealer"
+            label="Dealer"
+            value={product.id_dealer}
+            lookups={lookups}
+            currentDisplayValue={product.dealer_company_name}
+            loadingLookups={loadingLookups}
+            onChange={onChange}
+            onLookupSearch={onLookupSearch}
+          />
+          <ProductDetailField
+            field="id_manufacturer"
+            label="Manufacturer"
+            value={product.id_manufacturer}
+            lookups={lookups}
+            currentDisplayValue={product.manufacturer_company_name}
+            loadingLookups={loadingLookups}
+            onChange={onChange}
+            onLookupSearch={onLookupSearch}
+          />
+        </DetailGrid>
+
+        <DetailGrid>
+          <ProductDetailField
+            field="id_prefix_encoding"
+            label="Encoding ID"
+            value={product.id_prefix_encoding}
+            lookups={lookups}
+            currentDisplayValue={product.prefix_encoding}
+            loadingLookups={loadingLookups}
+            onChange={onChange}
+            onLookupSearch={onLookupSearch}
+          />
+          <ProductDetailField
+            field="prefix_encoding"
+            label="Encoding"
+            value={product.prefix_encoding}
+            lookups={lookups}
+            loadingLookups={loadingLookups}
+            onChange={onChange}
+            onLookupSearch={onLookupSearch}
+          />
+          <ProductDetailField
+            field="id_prefix_code"
+            label="Prefix Code ID"
+            value={product.id_prefix_code}
+            lookups={lookups}
+            currentDisplayValue={product.prefix_code}
+            loadingLookups={loadingLookups}
+            onChange={onChange}
+            onLookupSearch={onLookupSearch}
+          />
+          <ProductDetailField
+            field="id_father_name"
+            label="Father Name ID"
+            value={product.id_father_name}
+            lookups={lookups}
+            currentDisplayValue={product.father_name}
+            loadingLookups={loadingLookups}
+            onChange={onChange}
+            onLookupSearch={onLookupSearch}
+          />
+        </DetailGrid>
+
+        <DetailGrid>
+          <ProductDetailField
+            field="id_mc_lvl1"
+            label="MC L1 Code"
+            value={product.id_mc_lvl1}
+            lookups={lookups}
+            currentDisplayValue={formatMcCode(product.mc_lvl1_code)}
+            loadingLookups={loadingLookups}
+            onChange={onChange}
+            onLookupSearch={onLookupSearch}
+          />
+          <ProductDetailField
+            field="id_mc_lvl2"
+            label="MC L2 Code"
+            value={product.id_mc_lvl2}
+            lookups={lookups}
+            currentDisplayValue={formatMcCode(product.mc_lvl2_code)}
+            loadingLookups={loadingLookups}
+            lookupParams={{ id_mc_lvl1: product.id_mc_lvl1 }}
+            disabled={!product.id_mc_lvl1}
+            onChange={onChange}
+            onLookupSearch={onLookupSearch}
+          />
+          <ProductDetailField
+            field="id_mc_lvl3"
+            label="MC L3 Code"
+            value={product.id_mc_lvl3}
+            lookups={lookups}
+            currentDisplayValue={formatMcCode(product.mc_lvl3_code)}
+            loadingLookups={loadingLookups}
+            lookupParams={{
+              id_mc_lvl1: product.id_mc_lvl1,
+              id_mc_lvl2: product.id_mc_lvl2,
+            }}
+            disabled={!product.id_mc_lvl1 || !product.id_mc_lvl2}
+            onChange={onChange}
+            onLookupSearch={onLookupSearch}
+          />
+        </DetailGrid>
+
+        <DetailGrid>
+          <ProductDetailField
+            field="id_pack"
+            label="Pack ID"
+            value={product.id_pack}
+            lookups={lookups}
+            currentDisplayValue={product.pack}
+            loadingLookups={loadingLookups}
+            onChange={onChange}
+            onLookupSearch={onLookupSearch}
+          />
+          <ProductDetailField
+            field="inner_count"
+            label="Inner Count"
+            value={product.inner_count}
+            lookups={lookups}
+            loadingLookups={loadingLookups}
+            onChange={onChange}
+            onLookupSearch={onLookupSearch}
+          />
+          <ProductDetailField
+            field="inner_qty"
+            label="Inner Qty"
+            value={product.inner_qty}
+            lookups={lookups}
+            loadingLookups={loadingLookups}
+            onChange={onChange}
+            onLookupSearch={onLookupSearch}
+          />
+          <ProductDetailField
+            field="pack_qty_raw"
+            label="Pack Qty raw"
+            value={product.pack_qty_raw}
+            lookups={lookups}
+            loadingLookups={loadingLookups}
+            onChange={onChange}
+            onLookupSearch={onLookupSearch}
+          />
+          <ProductDetailField
+            field="is_composite_pack"
+            label="Composite Pack"
+            value={product.is_composite_pack}
+            type="boolean"
+            lookups={lookups}
+            loadingLookups={loadingLookups}
+            onChange={onChange}
+            onLookupSearch={onLookupSearch}
+          />
+        </DetailGrid>
+
+        <DetailGrid>
+          <ProductDetailField
+            field="id_split"
+            label="Split ID"
+            value={product.id_split}
+            lookups={lookups}
+            loadingLookups={loadingLookups}
+            onChange={onChange}
+            onLookupSearch={onLookupSearch}
+          />
+          <ProductDetailField
+            field="id_parent_prod"
+            label="Parent Prod ID"
+            value={product.id_parent_prod}
+            lookups={lookups}
+            currentDisplayValue={product.parent_company_item_code}
+            loadingLookups={loadingLookups}
+            onChange={onChange}
+            onLookupSearch={onLookupSearch}
+          />
+          <ProductDetailField
+            field="split_percentage"
+            label="Split %"
+            value={product.split_percentage}
+            lookups={lookups}
+            loadingLookups={loadingLookups}
+            onChange={onChange}
+            onLookupSearch={onLookupSearch}
+          />
+        </DetailGrid>
       </Box>
     </Paper>
+  );
+}
+
+function DetailGrid({ children }: { children: React.ReactNode }) {
+  return (
+    <Box
+      sx={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+        gap: 1.25,
+        mb: 1.25,
+      }}
+    >
+      {children}
+    </Box>
   );
 }
 
@@ -726,6 +1045,10 @@ function ProductDetailField({
   lookups,
   currentDisplayValue,
   loadingLookups,
+  lookupParams = {},
+  disabled = false,
+  multiline = false,
+  minRows,
   onChange,
   onLookupSearch,
 }: {
@@ -736,8 +1059,16 @@ function ProductDetailField({
   lookups: ProductLookups;
   currentDisplayValue?: string;
   loadingLookups: Record<string, boolean>;
+  lookupParams?: LookupSearchParams;
+  disabled?: boolean;
+  multiline?: boolean;
+  minRows?: number;
   onChange: (field: string, value: any, option?: LookupOption | null) => void;
-  onLookupSearch: (lookupKey: string, query?: string) => void;
+  onLookupSearch: (
+    lookupKey: string,
+    query?: string,
+    extraParams?: LookupSearchParams
+  ) => void;
 }) {
   const lookupKey = lookupFields[field];
   const options = lookupKey ? lookups[lookupKey] || [] : [];
@@ -748,7 +1079,9 @@ function ProductDetailField({
       (value
         ? {
             id: Number(value),
-            label: currentDisplayValue || String(value),
+            label: field.startsWith("id_mc_lvl")
+              ? formatMcCode(currentDisplayValue || value)
+              : currentDisplayValue || String(value),
             code: null,
           }
         : null);
@@ -758,16 +1091,19 @@ function ProductDetailField({
         size="small"
         options={options}
         value={selectedOption}
+        disabled={disabled}
         loading={Boolean(loadingLookups[lookupKey])}
-        onOpen={() => onLookupSearch(lookupKey)}
+        onOpen={() => onLookupSearch(lookupKey, "", lookupParams)}
         onInputChange={(_, inputValue, reason) => {
           if (reason === "input") {
-            onLookupSearch(lookupKey, inputValue);
+            onLookupSearch(lookupKey, inputValue, lookupParams);
           }
         }}
         onChange={(_, option) => onChange(field, option?.id ?? null, option)}
         getOptionLabel={(option) =>
-          `${option.label || option.id}${option.code ? ` (${option.code})` : ""}`
+          field.startsWith("id_mc_lvl")
+            ? formatMcCode(option.code || option.label || option.id)
+            : `${option.label || option.id}${option.code ? ` (${option.code})` : ""}`
         }
         isOptionEqualToValue={(option, selected) => option.id === selected.id}
         renderInput={(params) => (
@@ -783,6 +1119,7 @@ function ProductDetailField({
         control={
           <Checkbox
             checked={Boolean(value)}
+            disabled={disabled}
             onChange={(event) => onChange(field, event.target.checked)}
           />
         }
@@ -796,16 +1133,19 @@ function ProductDetailField({
       label={label}
       size="small"
       value={value ?? ""}
+      disabled={disabled}
       onChange={(event) => onChange(field, event.target.value)}
-      multiline={field.includes("notes") || field === "description"}
-      minRows={field.includes("notes") || field === "description" ? 2 : 1}
+      multiline={multiline || field.includes("notes") || field === "description"}
+      minRows={minRows || (field.includes("notes") || field === "description" ? 2 : 1)}
     />
   );
 }
 
-function getRelatedDisplayValue(product: ProductRow, field: string) {
-  const displayField = relatedLabelFields[field]?.[0];
-  const displayValue = displayField ? product[displayField] : undefined;
+function formatMcCode(value: any) {
+  if (value === null || value === undefined || value === "") {
+    return "";
+  }
 
-  return displayValue == null ? undefined : String(displayValue);
+  const text = String(value).trim();
+  return /^\d+$/.test(text) ? text.padStart(2, "0").slice(-2) : text;
 }
