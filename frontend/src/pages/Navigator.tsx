@@ -191,6 +191,7 @@ export default function AdminDashboardPage() {
 
           <Route path="file-browser-bronze" element={<MantineStorageBrowser containerKey="bronze" />} />
           <Route path="file-browser-silver" element={<MantineStorageBrowser containerKey="silver" />} />
+          <Route path="file-browser-gold" element={<MantineStorageBrowser containerKey="gold" />} />
 
           <Route path="pdb-codifica" element={<PDBCodifica />} />
           <Route path="run-r-script" element={<RunRScript />} />

@@ -1,271 +1,312 @@
-
 import os
+from urllib.parse import quote
+
 from azure.storage.blob.aio import BlobServiceClient
 from azure.storage.filedatalake.aio import DataLakeServiceClient
 from fastapi import HTTPException, UploadFile
 
-def is_adls_container(container_key: str):
-    return container_key.lower() == "silver"
 
-# ==== UTILS COMMON ====
-def get_blob_container_client(container_key: str = "bronze"):
-    key_upper = container_key.upper()
+DEFAULT_STORAGE_TYPES = {
+    "bronze": "blob",
+    "silver": "adls",
+    "gold": "adls",
+}
+
+
+def normalize_container_key(container_key: str = "bronze") -> str:
+    key = (container_key or "bronze").strip().lower()
+    if not key:
+        raise HTTPException(status_code=400, detail="Container non valido")
+    return key
+
+
+def normalize_path(path: str = "") -> str:
+    return (path or "").strip().strip("/")
+
+
+def get_storage_type(container_key: str = "bronze") -> str:
+    key = normalize_container_key(container_key)
+    configured_type = os.getenv(f"AZURE_{key.upper()}_STORAGE_TYPE")
+    storage_type = (configured_type or DEFAULT_STORAGE_TYPES.get(key, "blob")).strip().lower()
+    if storage_type not in {"blob", "adls"}:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Tipo storage non valido per {key}: {storage_type}",
+        )
+    return storage_type
+
+
+def is_adls_container(container_key: str) -> bool:
+    return get_storage_type(container_key) == "adls"
+
+
+def get_storage_settings(container_key: str):
+    key = normalize_container_key(container_key)
+    key_upper = key.upper()
     conn_str = os.getenv(f"AZURE_{key_upper}_CONNECTION_STRING")
     container_name = os.getenv(f"AZURE_{key_upper}_CONTAINER_NAME")
+
     if not conn_str or not container_name:
-        raise HTTPException(status_code=500, detail=f"Variabili mancanti per {container_key}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Variabili mancanti per il container {key}",
+        )
+
+    return conn_str, container_name
+
+
+def get_blob_container_client(container_key: str = "bronze"):
+    conn_str, container_name = get_storage_settings(container_key)
     client = BlobServiceClient.from_connection_string(conn_str)
     return client.get_container_client(container_name)
 
+
 def get_adls_filesystem(container_key: str = "silver"):
-    key_upper = container_key.upper()
-    conn_str = os.getenv(f"AZURE_{key_upper}_CONNECTION_STRING")
-    container_name = os.getenv(f"AZURE_{key_upper}_CONTAINER_NAME")
-    if not conn_str or not container_name:
-        raise HTTPException(status_code=500, detail="Connessione ADLS mancante")
+    conn_str, container_name = get_storage_settings(container_key)
     client = DataLakeServiceClient.from_connection_string(conn_str)
     return client.get_file_system_client(container_name)
 
-# ==== UPLOAD ====
 
-async def upload_to_blob(file: UploadFile, path: str, container: str = "bronze"):
-    container_client = get_blob_container_client(container)
-    full_path = f"{path}/{file.filename}" if path else file.filename
-    blob_client = container_client.get_blob_client(full_path)
+def build_full_path(path: str, filename: str) -> str:
+    clean_path = normalize_path(path)
+    clean_filename = (filename or "").strip().strip("/")
+    if not clean_filename:
+        raise HTTPException(status_code=400, detail="Nome file non valido")
+    return f"{clean_path}/{clean_filename}" if clean_path else clean_filename
+
+
+def as_download_headers(path: str):
+    filename = normalize_path(path).split("/")[-1] or "download"
+    return {
+        "Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}",
+    }
+
+
+async def upload_file(file: UploadFile, path: str, container: str = "bronze"):
+    full_path = build_full_path(path, file.filename)
+
+    if is_adls_container(container):
+        file_client = get_adls_filesystem(container).get_file_client(full_path)
+        await file_client.upload_data(await file.read(), overwrite=True)
+        return file_client.url
+
+    blob_client = get_blob_container_client(container).get_blob_client(full_path)
     await blob_client.upload_blob(await file.read(), overwrite=True)
     return blob_client.url
 
-# ==== LIST ====
 
-async def list_blobs_in_container(prefix: str = "", container: str = "bronze"):
+async def list_paths(prefix: str = "", container: str = "bronze"):
+    if is_adls_container(container):
+        return await list_adls_paths(container=container, prefix=prefix)
+    return await list_blob_paths(prefix=prefix, container=container)
+
+
+async def list_blob_paths(prefix: str = "", container: str = "bronze"):
     container_client = get_blob_container_client(container)
     blobs = []
     folders = set()
 
-    prefix = prefix.rstrip("/") + "/" if prefix else ""
+    clean_prefix = normalize_path(prefix)
+    blob_prefix = f"{clean_prefix}/" if clean_prefix else ""
 
-    async for blob in container_client.list_blobs(name_starts_with=prefix):
-        full_path = blob.name
-        if not full_path.startswith(prefix):
-            continue  # sicurezza
-
-        relative_path = full_path[len(prefix):]
+    async for blob in container_client.list_blobs(name_starts_with=blob_prefix):
+        relative_path = blob.name[len(blob_prefix) :]
         parts = relative_path.split("/")
 
         if len(parts) == 1:
             if parts[0] != ".folder-placeholder":
-                blobs.append({
-                    "name": parts[0],
-                    "type": "file",
-                    "last_modified": blob.last_modified.isoformat() if blob.last_modified else None
-                })
-        elif len(parts) > 1:
+                blobs.append(
+                    {
+                        "name": parts[0],
+                        "type": "file",
+                        "last_modified": blob.last_modified.isoformat()
+                        if blob.last_modified
+                        else None,
+                    }
+                )
+        elif len(parts) > 1 and parts[0]:
             folders.add(parts[0])
 
     return [
-        *[{"name": name, "type": "folder", "last_modified": None} for name in sorted(folders)],
-        *blobs
+        *[
+            {"name": name, "type": "folder", "last_modified": None}
+            for name in sorted(folders)
+        ],
+        *blobs,
     ]
+
 
 async def list_adls_paths(container: str = "silver", prefix: str = ""):
     fs_client = get_adls_filesystem(container)
+    clean_prefix = normalize_path(prefix)
     result = []
-    async for path in fs_client.get_paths(path=prefix or "", recursive=False):
-        relative = path.name[len(prefix):] if prefix and path.name.startswith(prefix) else path.name
-        relative = relative.strip("/")
-        if "/" in relative:
-            continue
-        result.append({
-            "name": relative,
-            "type": "folder" if path.is_directory else "file",
-            "last_modified": path.last_modified.isoformat() if path.last_modified else None
-        })
-    return result
 
-# ==== CREATE FOLDER ====
+    async for path in fs_client.get_paths(path=clean_prefix or None, recursive=False):
+        path_name = normalize_path(path.name)
+        if not path_name or path_name == clean_prefix:
+            continue
+
+        if clean_prefix:
+            prefix_with_slash = f"{clean_prefix}/"
+            if not path_name.startswith(prefix_with_slash):
+                continue
+            relative = path_name[len(prefix_with_slash) :]
+        else:
+            relative = path_name
+
+        relative = relative.strip("/")
+        if not relative or "/" in relative:
+            continue
+
+        result.append(
+            {
+                "name": relative,
+                "type": "folder" if path.is_directory else "file",
+                "last_modified": path.last_modified.isoformat()
+                if path.last_modified
+                else None,
+            }
+        )
+
+    return sorted(result, key=lambda item: (item["type"] != "folder", item["name"].lower()))
+
 
 async def create_folder(path: str, container: str = "bronze"):
-    clean_path = path.rstrip("/")
+    clean_path = normalize_path(path)
+    if not clean_path:
+        raise HTTPException(status_code=400, detail="Path cartella non valido")
+
     if is_adls_container(container):
-        fs = get_adls_filesystem(container)
-        await fs.create_directory(clean_path)
-    else:
-        container_client = get_blob_container_client(container)
-        dummy_blob_name = f"{clean_path}/.folder-placeholder"
-        blob_client = container_client.get_blob_client(dummy_blob_name)
-        await blob_client.upload_blob(b"", overwrite=True)
+        await get_adls_filesystem(container).create_directory(clean_path)
+        return
 
-# ==== DELETE ====
+    blob_client = get_blob_container_client(container).get_blob_client(
+        f"{clean_path}/.folder-placeholder"
+    )
+    await blob_client.upload_blob(b"", overwrite=True)
 
-async def delete_blob(path: str, container: str = "bronze"):
-    container_client = get_blob_container_client(container)
-    blob_client = container_client.get_blob_client(path)
-    await blob_client.delete_blob()
+
+async def delete_file(path: str, container: str = "bronze"):
+    clean_path = normalize_path(path)
+    if not clean_path:
+        raise HTTPException(status_code=400, detail="Path file non valido")
+
+    if is_adls_container(container):
+        await get_adls_filesystem(container).get_file_client(clean_path).delete_file()
+        return
+
+    await get_blob_container_client(container).get_blob_client(clean_path).delete_blob()
+
 
 async def delete_folder(prefix: str, container: str = "bronze"):
+    clean_prefix = normalize_path(prefix)
+    if not clean_prefix:
+        raise HTTPException(status_code=400, detail="Path cartella non valido")
+
     if is_adls_container(container):
         fs_client = get_adls_filesystem(container)
-        if not prefix.endswith("/"):
-            prefix += "/"
-        to_delete = []
-        async for path in fs_client.get_paths(path=prefix, recursive=True):
-            to_delete.append(path.name)
-        for p in sorted(to_delete, reverse=True):
+        paths_to_delete = []
+
+        async for path in fs_client.get_paths(path=clean_prefix, recursive=True):
+            path_name = normalize_path(path.name)
+            if path_name != clean_prefix:
+                paths_to_delete.append((path_name, path.is_directory))
+
+        for path_name, is_directory in sorted(paths_to_delete, reverse=True):
             try:
-                await fs_client.get_file_client(p).delete_file()
-            except Exception as e:
-                print(f"⚠️ Errore eliminando {p}: {e}")
-        try:
-            await fs_client.get_directory_client(prefix.rstrip("/")).delete_directory()
-        except Exception as e:
-            print(f"⚠️ Impossibile eliminare directory {prefix}: {e}")
-    else:
-        container_client = get_blob_container_client(container)
-        prefix = prefix.rstrip("/") + "/"
-        async for blob in container_client.list_blobs(name_starts_with=prefix):
+                if is_directory:
+                    await fs_client.get_directory_client(path_name).delete_directory()
+                else:
+                    await fs_client.get_file_client(path_name).delete_file()
+            except Exception as exc:
+                print(f"Errore eliminando {path_name}: {exc}")
 
-            blob_client = container_client.get_blob_client(blob.name)
-            await blob_client.delete_blob()
+        await fs_client.get_directory_client(clean_prefix).delete_directory()
+        return
 
-# ==== RENAME ====
-
-async def rename_blob(old_path: str, new_path: str, container: str = "bronze"):
     container_client = get_blob_container_client(container)
-    new_blob = container_client.get_blob_client(new_path)
+    blob_prefix = f"{clean_prefix}/"
+    async for blob in container_client.list_blobs(name_starts_with=blob_prefix):
+        await container_client.get_blob_client(blob.name).delete_blob()
+
+
+async def rename_file(old_path: str, new_path: str, container: str = "bronze"):
+    clean_old_path = normalize_path(old_path)
+    clean_new_path = normalize_path(new_path)
+    if not clean_old_path or not clean_new_path:
+        raise HTTPException(status_code=400, detail="Path non valido")
+
+    if is_adls_container(container):
+        fs_client = get_adls_filesystem(container)
+        target = fs_client.get_file_client(clean_new_path)
+        if await target.exists():
+            raise HTTPException(status_code=400, detail="Esiste gia un file con questo nome.")
+
+        file_client = fs_client.get_file_client(clean_old_path)
+        await file_client.rename_file(f"{fs_client.file_system_name}/{clean_new_path}")
+        return
+
+    container_client = get_blob_container_client(container)
+    new_blob = container_client.get_blob_client(clean_new_path)
     if await new_blob.exists():
-        raise HTTPException(status_code=400, detail="Esiste già un file con questo nome.")
-    old_blob = container_client.get_blob_client(old_path)
+        raise HTTPException(status_code=400, detail="Esiste gia un file con questo nome.")
+
+    old_blob = container_client.get_blob_client(clean_old_path)
     await new_blob.start_copy_from_url(old_blob.url)
     await old_blob.delete_blob()
 
+
 async def rename_folder(old_prefix: str, new_prefix: str, container: str = "bronze"):
+    clean_old_prefix = normalize_path(old_prefix)
+    clean_new_prefix = normalize_path(new_prefix)
+    if not clean_old_prefix or not clean_new_prefix:
+        raise HTTPException(status_code=400, detail="Path cartella non valido")
+
     if is_adls_container(container):
         fs_client = get_adls_filesystem(container)
+        target = fs_client.get_directory_client(clean_new_prefix)
+        if await target.exists():
+            raise HTTPException(status_code=400, detail="Esiste gia una cartella con questo nome.")
 
-        if not old_prefix.endswith("/"):
-            old_prefix += "/"
-        if not new_prefix.endswith("/"):
-            new_prefix += "/"
+        directory_client = fs_client.get_directory_client(clean_old_prefix)
+        await directory_client.rename_directory(
+            f"{fs_client.file_system_name}/{clean_new_prefix}"
+        )
+        return
 
-        print(f"🔍 Controllo conflitti con new_prefix: '{new_prefix}'")
+    container_client = get_blob_container_client(container)
+    old_blob_prefix = f"{clean_old_prefix}/"
+    new_blob_prefix = f"{clean_new_prefix}/"
 
-        # Elenca tutti i path esistenti
-        all_paths = []
-        async for p in fs_client.get_paths(path="", recursive=True):
-            all_paths.append(p.name)
+    async for blob in container_client.list_blobs(name_starts_with=new_blob_prefix):
+        if blob.name:
+            raise HTTPException(status_code=400, detail="Esiste gia una cartella con questo nome.")
 
-        print(f"📦 Trovati {len(all_paths)} path totali")
+    async for blob in container_client.list_blobs(name_starts_with=old_blob_prefix):
+        new_name = blob.name.replace(old_blob_prefix, new_blob_prefix, 1)
+        old_blob = container_client.get_blob_client(blob.name)
+        new_blob = container_client.get_blob_client(new_name)
+        await new_blob.start_copy_from_url(old_blob.url)
+        await old_blob.delete_blob()
 
-        # Verifica se esiste già qualcosa con quel prefisso
-        for existing in all_paths:
-            if existing == new_prefix.rstrip("/") or existing.startswith(new_prefix):
-                print(f"⛔️ Conflitto: '{existing}' esiste già (match con '{new_prefix}')")
-                raise HTTPException(status_code=400, detail=f"Conflitto: '{existing}' esiste già")
 
-        print("✅ Nessun conflitto, procedo con rinomina")
+async def download_file(path: str, container: str = "bronze"):
+    clean_path = normalize_path(path)
+    if not clean_path:
+        raise HTTPException(status_code=400, detail="Path file non valido")
 
-        # Crea directory target
-        try:
-            await fs_client.create_directory(new_prefix)
-        except Exception:
-            pass
+    if is_adls_container(container):
+        downloader = await get_adls_filesystem(container).get_file_client(clean_path).download_file()
+        return await downloader.readall()
 
-        # Rinomina tutti i file da old_prefix a new_prefix
-        paths_to_move = []
-        async for path in fs_client.get_paths(path=old_prefix, recursive=True):
-            paths_to_move.append(path.name)
+    downloader = await get_blob_container_client(container).get_blob_client(clean_path).download_blob()
+    return await downloader.readall()
 
-        for src_path in sorted(paths_to_move, reverse=True):
-            relative = src_path[len(old_prefix):].lstrip("/")
-            dest_path = f"{new_prefix}{relative}".replace("//", "/")
-            file_client = fs_client.get_file_client(src_path)
-            try:
-                await file_client.rename_file(f"{fs_client.file_system_name}/{dest_path}")
-            except Exception as e:
-                print(f"❌ Errore rename {src_path} → {dest_path}: {e}")
-                raise HTTPException(status_code=500, detail=f"Errore rename {src_path}: {str(e)}")
 
-        # Elimina cartella vecchia
-        try:
-            await fs_client.get_directory_client(old_prefix.rstrip("/")).delete_directory()
-        except Exception as e:
-            print(f"⚠️ Impossibile eliminare directory {old_prefix}: {e}")
-    else:
-        # Bronze (Blob)
-        container_client = get_blob_container_client(container)
-        async for blob in container_client.list_blobs(name_starts_with=old_prefix):
-            old_blob = container_client.get_blob_client(blob.name)
-            new_name = blob.name.replace(old_prefix, new_prefix, 1)
-            new_blob = container_client.get_blob_client(new_name)
-            if await new_blob.exists():
-                raise HTTPException(status_code=400, detail="Esiste già una cartella con questo nome.")
-            await new_blob.start_copy_from_url(old_blob.url)
-            await old_blob.delete_blob()
-
-def get_adls_filesystem(container_key: str = "silver"):
-    key_upper = container_key.upper()
-    conn_str = os.getenv(f"AZURE_{key_upper}_CONNECTION_STRING")
-    container_name = os.getenv(f"AZURE_{key_upper}_CONTAINER_NAME")
-
-    if not conn_str or not container_name:
-        raise HTTPException(status_code=500, detail="Connessione ADLS mancante")
-
-    client = DataLakeServiceClient.from_connection_string(conn_str)
-    return client.get_file_system_client(container_name)
-
-async def rename_folder_adls(old_prefix: str, new_prefix: str, container: str = "silver"):
-    fs_client = get_adls_filesystem(container)
-
-    if not old_prefix.endswith("/"):
-        old_prefix += "/"
-    if not new_prefix.endswith("/"):
-        new_prefix += "/"
-
-    try:
-        await fs_client.create_directory(new_prefix)
-    except Exception:
-        pass
-
-    paths = []
-    async for path in fs_client.get_paths(path=old_prefix, recursive=True):
-        paths.append(path.name)
-
-    for src_path in sorted(paths, reverse=True):
-        relative = src_path[len(old_prefix):].lstrip("/")
-        dest_path = f"{new_prefix}{relative}"
-        dest_path = dest_path.replace("//", "/")
-        file_client = fs_client.get_file_client(src_path)
-        try:
-            await file_client.rename_file(f"{fs_client.file_system_name}/{dest_path}")
-        except Exception as e:
-            print(f"❌ Errore rename {src_path} → {dest_path}: {e}")
-            raise HTTPException(status_code=500, detail=f"Errore rename {src_path}: {str(e)}")
-    
-    # Elimina la cartella vecchia se vuota
-    try:
-        await fs_client.get_directory_client(old_prefix.rstrip("/")).delete_directory()
-    except Exception as e:
-        print(f"⚠️ Impossibile eliminare directory {old_prefix}: {e}")
-
-async def delete_folder_adls(prefix: str, container: str = "silver"):
-    fs_client = get_adls_filesystem(container)
-
-    if not prefix.endswith("/"):
-        prefix += "/"
-
-    to_delete = []
-    async for path in fs_client.get_paths(path=prefix, recursive=True):
-        to_delete.append(path.name)
-
-    # Elimina prima i file
-    for p in sorted(to_delete, reverse=True):
-        try:
-            await fs_client.get_file_client(p).delete_file()
-        except Exception as e:
-            print(f"⚠️ Errore eliminando {p}: {e}")
-
-    # Poi elimina la directory principale
-    try:
-        await fs_client.get_directory_client(prefix.rstrip("/")).delete_directory()
-    except Exception as e:
-        print(f"⚠️ Impossibile eliminare directory {prefix}: {e}")
+# Backward-compatible names used by older routes/components.
+upload_to_blob = upload_file
+list_blobs_in_container = list_blob_paths
+delete_blob = delete_file
+rename_blob = rename_file
+rename_folder_adls = rename_folder
+delete_folder_adls = delete_folder
