@@ -86,6 +86,74 @@ class ProductSearchRequest(BaseModel):
     filters: Dict[str, Any] = Field(default_factory=dict)
 
 
+PRODUCT_LOOKUP_QUERIES = {
+    "companies": """
+        SELECT id, company_name AS label, company_code AS code
+        FROM dbo.companies
+        ORDER BY company_name
+    """,
+    "prefix_encodings": """
+        SELECT id, prefix_encoding AS label
+        FROM dbo.prods_prefix_encodings
+        ORDER BY prefix_encoding
+    """,
+    "prefix_codes": """
+        SELECT id, prefix_code AS label
+        FROM dbo.prods_prefix_codes
+        ORDER BY prefix_code
+    """,
+    "father_names": """
+        SELECT id, father_name AS label
+        FROM dbo.prods_father_names
+        ORDER BY father_name
+    """,
+    "master_codes": """
+        SELECT
+            mc.id,
+            CONCAT(
+                COALESCE(mc1.code, ''),
+                CASE WHEN mc2.code IS NULL THEN '' ELSE CONCAT(' / ', mc2.code) END,
+                CASE WHEN mc3.code IS NULL THEN '' ELSE CONCAT(' / ', mc3.code) END
+            ) AS label
+        FROM dbo.master_code AS mc
+        LEFT JOIN dbo.mc_lvl1 AS mc1 ON mc1.id = mc.id_mc_lvl1
+        LEFT JOIN dbo.mc_lvl2 AS mc2 ON mc2.id = mc.id_mc_lvl2
+        LEFT JOIN dbo.mc_lvl3 AS mc3 ON mc3.id = mc.id_mc_lvl3
+        ORDER BY label
+    """,
+    "packs": """
+        SELECT id, pack AS label
+        FROM dbo.prods_pack
+        ORDER BY pack
+    """,
+    "pack_measure_units": """
+        SELECT id, measure_unit AS label
+        FROM dbo.prods_pack_measure_units
+        ORDER BY measure_unit
+    """,
+    "features": """
+        SELECT id, feature AS label
+        FROM dbo.prods_features
+        ORDER BY feature
+    """,
+    "measures": """
+        SELECT id, measure AS label
+        FROM dbo.prods_measures
+        ORDER BY measure
+    """,
+    "products": """
+        SELECT TOP (5000) id, company_item_code AS label
+        FROM dbo.prods
+        ORDER BY company_item_code
+    """,
+    "users": """
+        SELECT id, CONCAT(COALESCE(nome, ''), ' ', COALESCE(cognome, '')) AS label
+        FROM dbo.users
+        ORDER BY label
+    """,
+}
+
+
 PRODUCTS_BASE_QUERY = """
     SELECT
         pv.id AS id_prod_version,
@@ -328,6 +396,16 @@ def get_product_companies(db: Session = Depends(get_db)):
     ).fetchall()
 
     return jsonable_encoder([dict(row._mapping) for row in rows])
+
+
+@router.get("/products/lookups")
+def get_product_lookups(db: Session = Depends(get_db)):
+    lookups = {}
+    for key, query in PRODUCT_LOOKUP_QUERIES.items():
+        rows = db.execute(text(query)).fetchall()
+        lookups[key] = [dict(row._mapping) for row in rows]
+
+    return jsonable_encoder(lookups)
 
 
 @router.post("/products/search")

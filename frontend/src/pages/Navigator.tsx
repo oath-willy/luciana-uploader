@@ -26,11 +26,12 @@ import {
   ActionIcon,
 } from '@mantine/core';
 import { useEffect, useState } from 'react';
-import { Link, Routes, Route } from 'react-router-dom';
+import { Link, Navigate, Routes, Route } from 'react-router-dom';
 import MantineStorageBrowser from '../components/MantineStorageBrowser';
 import RunRScript from '../components/RunRScript';
 import RunRScriptLog from '../components/RunRScriptLog';
 import PDBCodifica from '../components/PDBCodifica';
+import ProductsTest from '../components/ProductsTest';
 
 type UserData = {
   name: string;
@@ -131,7 +132,10 @@ export default function AdminDashboardPage() {
 
                   <NavLink label={!navCollapsed ? "Products" : ""} leftSection={<IconDatabase size={18} />}>
                     {!navCollapsed && (
-                      <NavLink label="Products" pl="md" component={Link} to="/navigator/pdb-codifica" />
+                      <>
+                        <NavLink label="Products" pl="md" component={Link} to="/navigator/products" />
+                        <NavLink label="Products Test" pl="md" component={Link} to="/navigator/products-test" />
+                      </>
                     )}
                   </NavLink>
 
@@ -193,7 +197,9 @@ export default function AdminDashboardPage() {
           <Route path="file-browser-silver" element={<MantineStorageBrowser containerKey="silver" />} />
           <Route path="file-browser-gold" element={<MantineStorageBrowser containerKey="gold" />} />
 
-          <Route path="pdb-codifica" element={<PDBCodifica />} />
+          <Route path="products" element={<PDBCodifica />} />
+          <Route path="products-test" element={<ProductsTest />} />
+          <Route path="pdb-codifica" element={<Navigate to="/navigator/products" replace />} />
           <Route path="run-r-script" element={<RunRScript />} />
           <Route path="run-r-script-log" element={<RunRScriptLog />} />
         </Routes>

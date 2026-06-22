@@ -4,6 +4,7 @@ import {
   GridColDef,
   GridPagination,
   GridPaginationModel,
+  GridRowParams,
   GridRowSelectionModel,
 } from "@mui/x-data-grid";
 import {
@@ -11,13 +12,18 @@ import {
   Autocomplete,
   Box,
   Button,
+  Checkbox,
+  CircularProgress,
   FormControl,
+  FormControlLabel,
   IconButton,
   InputAdornment,
   InputLabel,
   MenuItem,
+  Paper,
   Select,
   TextField,
+  Typography,
 } from "@mui/material";
 
 type Company = {
@@ -28,6 +34,18 @@ type Company = {
 
 type CompanyRole = "any" | "dealer" | "manufacturer";
 type ColumnFilters = Record<string, string>;
+type ProductRow = Record<string, any>;
+type LookupOption = {
+  id: number;
+  label: string;
+  code?: string | null;
+};
+type ProductLookups = Record<string, LookupOption[]>;
+
+type ProductsProps = {
+  title?: string;
+  enableDetailPanel?: boolean;
+};
 
 const backendBaseUrl = process.env.REACT_APP_BACKEND_URL || "";
 const pageSizeOptions = [25, 50, 100, 250, 500, 1000, { value: -1, label: "Full" }];
@@ -91,7 +109,38 @@ const baseColumns: GridColDef[] = [
   { field: "user_cognome", headerName: "User Last Name", width: 160 },
 ];
 
-export default function Products() {
+const lookupFields: Record<string, string> = {
+  id_dealer: "companies",
+  id_manufacturer: "companies",
+  id_prefix_encoding: "prefix_encodings",
+  id_prefix_code: "prefix_codes",
+  id_father_name: "father_names",
+  id_mc: "master_codes",
+  id_pack: "packs",
+  id_pack_measure_unit: "pack_measure_units",
+  id_feature: "features",
+  id_measure: "measures",
+  id_parent_prod: "products",
+  id_user: "users",
+};
+
+const relatedLabelFields: Record<string, string[]> = {
+  id_dealer: ["dealer_company_name", "dealer_company_code"],
+  id_manufacturer: ["manufacturer_company_name", "manufacturer_company_code"],
+  id_prefix_encoding: ["prefix_encoding"],
+  id_prefix_code: ["prefix_code"],
+  id_father_name: ["father_name"],
+  id_pack: ["pack"],
+  id_pack_measure_unit: ["pack_measure_unit"],
+  id_feature: ["feature"],
+  id_measure: ["measure"],
+  id_parent_prod: ["parent_company_item_code"],
+};
+
+export default function Products({
+  title = "Products",
+  enableDetailPanel = false,
+}: ProductsProps) {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
   const [companyRole, setCompanyRole] = useState<CompanyRole>("any");
@@ -106,6 +155,11 @@ export default function Products() {
   const [debouncedColumnFilters, setDebouncedColumnFilters] = useState<ColumnFilters>({});
   const [hasExecuted, setHasExecuted] = useState(false);
   const [runToken, setRunToken] = useState(0);
+  const [selectedProduct, setSelectedProduct] = useState<ProductRow | null>(null);
+  const [draftProduct, setDraftProduct] = useState<ProductRow | null>(null);
+  const [productLookups, setProductLookups] = useState<ProductLookups>({});
+  const [loadingLookups, setLoadingLookups] = useState(false);
+  const [lookupsLoaded, setLookupsLoaded] = useState(false);
   const [paginationModel, setPaginationModel] = useState<GridPaginationModel>({
     page: 0,
     pageSize: 100,
@@ -127,6 +181,27 @@ export default function Products() {
       .catch((err) => setError(err.message || "Errore caricamento aziende"))
       .finally(() => setLoadingCompanies(false));
   }, []);
+
+  const loadProductLookups = useCallback(async () => {
+    if (lookupsLoaded || loadingLookups) {
+      return;
+    }
+
+    setLoadingLookups(true);
+    try {
+      const response = await fetch(`${backendBaseUrl}/api/products/lookups`);
+      if (!response.ok) {
+        throw new Error("Impossibile caricare i valori dei menu a tendina");
+      }
+
+      setProductLookups(await response.json());
+      setLookupsLoaded(true);
+    } catch (err: any) {
+      setError(err.message || "Errore caricamento lookup prodotto");
+    } finally {
+      setLoadingLookups(false);
+    }
+  }, [lookupsLoaded, loadingLookups]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -228,6 +303,47 @@ export default function Products() {
     setHasExecuted(true);
     setPaginationModel((current) => ({ ...current, page: 0 }));
     setRunToken((current) => current + 1);
+  };
+
+  const handleRowClick = useCallback(
+    (params: GridRowParams) => {
+      if (!enableDetailPanel) {
+        return;
+      }
+
+      setSelectedProduct(params.row);
+      setDraftProduct(params.row);
+      loadProductLookups();
+    },
+    [enableDetailPanel, loadProductLookups]
+  );
+
+  const closeDetailPanel = () => {
+    setSelectedProduct(null);
+    setDraftProduct(null);
+  };
+
+  const handleDetailChange = (field: string, value: any, option?: LookupOption | null) => {
+    setDraftProduct((current) => {
+      if (!current) {
+        return current;
+      }
+
+      const next = {
+        ...current,
+        [field]: value,
+      };
+
+      const labelFields = relatedLabelFields[field] || [];
+      if (option && labelFields.length > 0) {
+        next[labelFields[0]] = option.label;
+        if (labelFields[1]) {
+          next[labelFields[1]] = option.code || "";
+        }
+      }
+
+      return next;
+    });
   };
 
   const handleSearchChange = (value: string) => {
@@ -335,7 +451,7 @@ export default function Products() {
         }}
       >
         <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, flexWrap: "wrap" }}>
-          <h2 style={{ margin: 0 }}>Products</h2>
+          <h2 style={{ margin: 0 }}>{title}</h2>
 
           <Autocomplete
             size="small"
@@ -425,33 +541,52 @@ export default function Products() {
         </Alert>
       )}
 
-      <DataGrid
-        rows={rows}
-        columns={columns}
-        loading={loadingRows}
-        rowHeight={28}
-        columnHeaderHeight={76}
-        paginationMode="server"
-        rowCount={rowCount}
-        paginationModel={paginationModel}
-        onPaginationModelChange={(model) => setPaginationModel(model)}
-        pageSizeOptions={pageSizeOptions}
-        checkboxSelection
-        disableRowSelectionOnClick
-        rowSelectionModel={rowSelectionModel}
-        onRowSelectionModelChange={(newSelection) =>
-          setRowSelectionModel(newSelection)
-        }
-        slots={{
-          footer: () => (
-            <CustomFooter
-              selectedCount={selectedCount}
-              loadedCount={rows.length}
-              rowCount={rowCount}
-            />
-          ),
+      <Box
+        sx={{
+          height: enableDetailPanel && selectedProduct ? "45vh" : "calc(89vh - 86px)",
+          minHeight: 280,
+          transition: "height 180ms ease",
         }}
-      />
+      >
+        <DataGrid
+          rows={rows}
+          columns={columns}
+          loading={loadingRows}
+          rowHeight={28}
+          columnHeaderHeight={76}
+          paginationMode="server"
+          rowCount={rowCount}
+          paginationModel={paginationModel}
+          onPaginationModelChange={(model) => setPaginationModel(model)}
+          pageSizeOptions={pageSizeOptions}
+          checkboxSelection
+          disableRowSelectionOnClick
+          rowSelectionModel={rowSelectionModel}
+          onRowSelectionModelChange={(newSelection) =>
+            setRowSelectionModel(newSelection)
+          }
+          onRowClick={handleRowClick}
+          slots={{
+            footer: () => (
+              <CustomFooter
+                selectedCount={selectedCount}
+                loadedCount={rows.length}
+                rowCount={rowCount}
+              />
+            ),
+          }}
+        />
+      </Box>
+
+      {enableDetailPanel && draftProduct && (
+        <ProductDetailPanel
+          product={draftProduct}
+          lookups={productLookups}
+          loadingLookups={loadingLookups}
+          onChange={handleDetailChange}
+          onClose={closeDetailPanel}
+        />
+      )}
     </Box>
   );
 }
@@ -484,5 +619,150 @@ function CustomFooter({
 
       <GridPagination />
     </Box>
+  );
+}
+
+function ProductDetailPanel({
+  product,
+  lookups,
+  loadingLookups,
+  onChange,
+  onClose,
+}: {
+  product: ProductRow;
+  lookups: ProductLookups;
+  loadingLookups: boolean;
+  onChange: (field: string, value: any, option?: LookupOption | null) => void;
+  onClose: () => void;
+}) {
+  return (
+    <Paper
+      elevation={1}
+      sx={{
+        mt: 1,
+        height: "34vh",
+        minHeight: 230,
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+        borderRadius: 1,
+      }}
+    >
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          px: 1.5,
+          py: 1,
+          borderBottom: "1px solid #e0e0e0",
+        }}
+      >
+        <Box>
+          <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
+            Scheda prodotto
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            {product.company_item_code || "Prodotto senza codice"}
+          </Typography>
+        </Box>
+
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          {loadingLookups && <CircularProgress size={18} />}
+          <IconButton aria-label="Chiudi scheda prodotto" onClick={onClose} size="small">
+            X
+          </IconButton>
+        </Box>
+      </Box>
+
+      <Box
+        sx={{
+          flex: 1,
+          overflow: "auto",
+          p: 1.5,
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+          gap: 1.25,
+          alignContent: "start",
+        }}
+      >
+        {baseColumns.map((column) => (
+          <ProductDetailField
+            key={column.field}
+            field={column.field}
+            label={column.headerName || column.field}
+            value={product[column.field]}
+            type={column.type}
+            lookups={lookups}
+            onChange={onChange}
+          />
+        ))}
+      </Box>
+    </Paper>
+  );
+}
+
+function ProductDetailField({
+  field,
+  label,
+  value,
+  type,
+  lookups,
+  onChange,
+}: {
+  field: string;
+  label: string;
+  value: any;
+  type?: GridColDef["type"];
+  lookups: ProductLookups;
+  onChange: (field: string, value: any, option?: LookupOption | null) => void;
+}) {
+  const lookupKey = lookupFields[field];
+  const options = lookupKey ? lookups[lookupKey] || [] : [];
+
+  if (lookupKey) {
+    const selectedOption =
+      options.find((option) => String(option.id) === String(value)) || null;
+
+    return (
+      <Autocomplete
+        size="small"
+        options={options}
+        value={selectedOption}
+        onChange={(_, option) => onChange(field, option?.id ?? null, option)}
+        getOptionLabel={(option) =>
+          `${option.label || option.id}${option.code ? ` (${option.code})` : ""}`
+        }
+        isOptionEqualToValue={(option, selected) => option.id === selected.id}
+        renderInput={(params) => (
+          <TextField {...params} label={label} placeholder="Cerca..." />
+        )}
+      />
+    );
+  }
+
+  if (type === "boolean") {
+    return (
+      <FormControlLabel
+        control={
+          <Checkbox
+            checked={Boolean(value)}
+            onChange={(event) => onChange(field, event.target.checked)}
+          />
+        }
+        label={label}
+      />
+    );
+  }
+
+  return (
+    <TextField
+      label={label}
+      size="small"
+      value={value ?? ""}
+      onChange={(event) => onChange(field, event.target.value)}
+      multiline={field.includes("notes") || field === "description"}
+      minRows={field.includes("notes") || field === "description" ? 2 : 1}
+    />
   );
 }
