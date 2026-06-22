@@ -7,7 +7,7 @@ from fastapi import HTTPException, UploadFile
 
 
 DEFAULT_STORAGE_TYPES = {
-    "bronze": "blob",
+    "bronze": "adls",
     "silver": "adls",
     "gold": "adls",
 }
