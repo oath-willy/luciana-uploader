@@ -148,6 +148,7 @@ PRODUCT_LOOKUP_SOURCES = {
             RIGHT(CONCAT('00', COALESCE(CONVERT(NVARCHAR(20), mc1.code), '')), 2) AS code
         FROM dbo.master_code AS mc
         JOIN dbo.mc_lvl1 AS mc1 ON mc1.id = mc.id_mc_lvl1
+        WHERE LEN(LTRIM(RTRIM(COALESCE(CONVERT(NVARCHAR(20), mc1.code), '')))) > 0
     """,
     "mc_lvl2": """
         SELECT DISTINCT
@@ -157,6 +158,7 @@ PRODUCT_LOOKUP_SOURCES = {
             mc.id_mc_lvl1
         FROM dbo.master_code AS mc
         JOIN dbo.mc_lvl2 AS mc2 ON mc2.id = mc.id_mc_lvl2
+        WHERE LEN(LTRIM(RTRIM(COALESCE(CONVERT(NVARCHAR(20), mc2.code), '')))) > 0
     """,
     "mc_lvl3": """
         SELECT DISTINCT
@@ -167,6 +169,7 @@ PRODUCT_LOOKUP_SOURCES = {
             mc.id_mc_lvl2
         FROM dbo.master_code AS mc
         JOIN dbo.mc_lvl3 AS mc3 ON mc3.id = mc.id_mc_lvl3
+        WHERE LEN(LTRIM(RTRIM(COALESCE(CONVERT(NVARCHAR(20), mc3.code), '')))) > 0
     """,
 }
 
