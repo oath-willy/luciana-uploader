@@ -158,8 +158,7 @@ export default function Products({
   const [selectedProduct, setSelectedProduct] = useState<ProductRow | null>(null);
   const [draftProduct, setDraftProduct] = useState<ProductRow | null>(null);
   const [productLookups, setProductLookups] = useState<ProductLookups>({});
-  const [loadingLookups, setLoadingLookups] = useState(false);
-  const [lookupsLoaded, setLookupsLoaded] = useState(false);
+  const [loadingLookups, setLoadingLookups] = useState<Record<string, boolean>>({});
   const [paginationModel, setPaginationModel] = useState<GridPaginationModel>({
     page: 0,
     pageSize: 100,
@@ -182,26 +181,35 @@ export default function Products({
       .finally(() => setLoadingCompanies(false));
   }, []);
 
-  const loadProductLookups = useCallback(async () => {
-    if (lookupsLoaded || loadingLookups) {
+  const fetchProductLookup = useCallback(async (lookupKey: string, query = "") => {
+    if (loadingLookups[lookupKey]) {
       return;
     }
 
-    setLoadingLookups(true);
+    setLoadingLookups((current) => ({ ...current, [lookupKey]: true }));
     try {
-      const response = await fetch(`${backendBaseUrl}/api/products/lookups`);
+      const params = new URLSearchParams({
+        q: query,
+        limit: "50",
+      });
+      const response = await fetch(
+        `${backendBaseUrl}/api/products/lookups/${lookupKey}?${params.toString()}`
+      );
       if (!response.ok) {
         throw new Error("Impossibile caricare i valori dei menu a tendina");
       }
 
-      setProductLookups(await response.json());
-      setLookupsLoaded(true);
+      const data = await response.json();
+      setProductLookups((current) => ({
+        ...current,
+        [lookupKey]: data,
+      }));
     } catch (err: any) {
       setError(err.message || "Errore caricamento lookup prodotto");
     } finally {
-      setLoadingLookups(false);
+      setLoadingLookups((current) => ({ ...current, [lookupKey]: false }));
     }
-  }, [lookupsLoaded, loadingLookups]);
+  }, [loadingLookups]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -313,9 +321,11 @@ export default function Products({
 
       setSelectedProduct(params.row);
       setDraftProduct(params.row);
-      loadProductLookups();
+      Array.from(new Set(Object.values(lookupFields))).forEach((lookupKey) => {
+        fetchProductLookup(lookupKey);
+      });
     },
-    [enableDetailPanel, loadProductLookups]
+    [enableDetailPanel, fetchProductLookup]
   );
 
   const closeDetailPanel = () => {
@@ -584,6 +594,7 @@ export default function Products({
           lookups={productLookups}
           loadingLookups={loadingLookups}
           onChange={handleDetailChange}
+          onLookupSearch={fetchProductLookup}
           onClose={closeDetailPanel}
         />
       )}
@@ -627,12 +638,14 @@ function ProductDetailPanel({
   lookups,
   loadingLookups,
   onChange,
+  onLookupSearch,
   onClose,
 }: {
   product: ProductRow;
   lookups: ProductLookups;
-  loadingLookups: boolean;
+  loadingLookups: Record<string, boolean>;
   onChange: (field: string, value: any, option?: LookupOption | null) => void;
+  onLookupSearch: (lookupKey: string, query?: string) => void;
   onClose: () => void;
 }) {
   return (
@@ -668,7 +681,7 @@ function ProductDetailPanel({
         </Box>
 
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-          {loadingLookups && <CircularProgress size={18} />}
+          {Object.values(loadingLookups).some(Boolean) && <CircularProgress size={18} />}
           <IconButton aria-label="Chiudi scheda prodotto" onClick={onClose} size="small">
             X
           </IconButton>
@@ -694,7 +707,10 @@ function ProductDetailPanel({
             value={product[column.field]}
             type={column.type}
             lookups={lookups}
+            currentDisplayValue={getRelatedDisplayValue(product, column.field)}
+            loadingLookups={loadingLookups}
             onChange={onChange}
+            onLookupSearch={onLookupSearch}
           />
         ))}
       </Box>
@@ -708,27 +724,47 @@ function ProductDetailField({
   value,
   type,
   lookups,
+  currentDisplayValue,
+  loadingLookups,
   onChange,
+  onLookupSearch,
 }: {
   field: string;
   label: string;
   value: any;
   type?: GridColDef["type"];
   lookups: ProductLookups;
+  currentDisplayValue?: string;
+  loadingLookups: Record<string, boolean>;
   onChange: (field: string, value: any, option?: LookupOption | null) => void;
+  onLookupSearch: (lookupKey: string, query?: string) => void;
 }) {
   const lookupKey = lookupFields[field];
   const options = lookupKey ? lookups[lookupKey] || [] : [];
 
   if (lookupKey) {
     const selectedOption =
-      options.find((option) => String(option.id) === String(value)) || null;
+      options.find((option) => String(option.id) === String(value)) ||
+      (value
+        ? {
+            id: Number(value),
+            label: currentDisplayValue || String(value),
+            code: null,
+          }
+        : null);
 
     return (
       <Autocomplete
         size="small"
         options={options}
         value={selectedOption}
+        loading={Boolean(loadingLookups[lookupKey])}
+        onOpen={() => onLookupSearch(lookupKey)}
+        onInputChange={(_, inputValue, reason) => {
+          if (reason === "input") {
+            onLookupSearch(lookupKey, inputValue);
+          }
+        }}
         onChange={(_, option) => onChange(field, option?.id ?? null, option)}
         getOptionLabel={(option) =>
           `${option.label || option.id}${option.code ? ` (${option.code})` : ""}`
@@ -765,4 +801,11 @@ function ProductDetailField({
       minRows={field.includes("notes") || field === "description" ? 2 : 1}
     />
   );
+}
+
+function getRelatedDisplayValue(product: ProductRow, field: string) {
+  const displayField = relatedLabelFields[field]?.[0];
+  const displayValue = displayField ? product[displayField] : undefined;
+
+  return displayValue == null ? undefined : String(displayValue);
 }

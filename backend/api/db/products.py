@@ -86,26 +86,22 @@ class ProductSearchRequest(BaseModel):
     filters: Dict[str, Any] = Field(default_factory=dict)
 
 
-PRODUCT_LOOKUP_QUERIES = {
+PRODUCT_LOOKUP_SOURCES = {
     "companies": """
         SELECT id, company_name AS label, company_code AS code
         FROM dbo.companies
-        ORDER BY company_name
     """,
     "prefix_encodings": """
-        SELECT id, prefix_encoding AS label
+        SELECT id, prefix_encoding AS label, NULL AS code
         FROM dbo.prods_prefix_encodings
-        ORDER BY prefix_encoding
     """,
     "prefix_codes": """
-        SELECT id, prefix_code AS label
+        SELECT id, prefix_code AS label, NULL AS code
         FROM dbo.prods_prefix_codes
-        ORDER BY prefix_code
     """,
     "father_names": """
-        SELECT id, father_name AS label
+        SELECT id, father_name AS label, NULL AS code
         FROM dbo.prods_father_names
-        ORDER BY father_name
     """,
     "master_codes": """
         SELECT
@@ -114,42 +110,36 @@ PRODUCT_LOOKUP_QUERIES = {
                 COALESCE(mc1.code, ''),
                 CASE WHEN mc2.code IS NULL THEN '' ELSE CONCAT(' / ', mc2.code) END,
                 CASE WHEN mc3.code IS NULL THEN '' ELSE CONCAT(' / ', mc3.code) END
-            ) AS label
+            ) AS label,
+            NULL AS code
         FROM dbo.master_code AS mc
         LEFT JOIN dbo.mc_lvl1 AS mc1 ON mc1.id = mc.id_mc_lvl1
         LEFT JOIN dbo.mc_lvl2 AS mc2 ON mc2.id = mc.id_mc_lvl2
         LEFT JOIN dbo.mc_lvl3 AS mc3 ON mc3.id = mc.id_mc_lvl3
-        ORDER BY label
     """,
     "packs": """
-        SELECT id, pack AS label
+        SELECT id, pack AS label, NULL AS code
         FROM dbo.prods_pack
-        ORDER BY pack
     """,
     "pack_measure_units": """
-        SELECT id, measure_unit AS label
+        SELECT id, measure_unit AS label, NULL AS code
         FROM dbo.prods_pack_measure_units
-        ORDER BY measure_unit
     """,
     "features": """
-        SELECT id, feature AS label
+        SELECT id, feature AS label, NULL AS code
         FROM dbo.prods_features
-        ORDER BY feature
     """,
     "measures": """
-        SELECT id, measure AS label
+        SELECT id, measure AS label, NULL AS code
         FROM dbo.prods_measures
-        ORDER BY measure
     """,
     "products": """
-        SELECT TOP (5000) id, company_item_code AS label
+        SELECT id, company_item_code AS label, NULL AS code
         FROM dbo.prods
-        ORDER BY company_item_code
     """,
     "users": """
-        SELECT id, CONCAT(COALESCE(nome, ''), ' ', COALESCE(cognome, '')) AS label
+        SELECT id, CONCAT(COALESCE(nome, ''), ' ', COALESCE(cognome, '')) AS label, NULL AS code
         FROM dbo.users
-        ORDER BY label
     """,
 }
 
@@ -399,13 +389,48 @@ def get_product_companies(db: Session = Depends(get_db)):
 
 
 @router.get("/products/lookups")
-def get_product_lookups(db: Session = Depends(get_db)):
+def get_product_lookups(limit: int = 25, db: Session = Depends(get_db)):
     lookups = {}
-    for key, query in PRODUCT_LOOKUP_QUERIES.items():
-        rows = db.execute(text(query)).fetchall()
-        lookups[key] = [dict(row._mapping) for row in rows]
+    safe_limit = min(max(limit, 1), 100)
+    for key in PRODUCT_LOOKUP_SOURCES:
+        lookups[key] = _fetch_product_lookup(db, key, "", safe_limit)
 
     return jsonable_encoder(lookups)
+
+
+@router.get("/products/lookups/{lookup_key}")
+def get_product_lookup(
+    lookup_key: str,
+    q: str = "",
+    limit: int = 50,
+    db: Session = Depends(get_db),
+):
+    if lookup_key not in PRODUCT_LOOKUP_SOURCES:
+        raise HTTPException(status_code=404, detail="Lookup non trovato")
+
+    safe_limit = min(max(limit, 1), 100)
+    return jsonable_encoder(_fetch_product_lookup(db, lookup_key, q, safe_limit))
+
+
+def _fetch_product_lookup(db: Session, lookup_key: str, q: str, limit: int):
+    query = text(
+        f"""
+        SELECT TOP ({limit})
+            id,
+            label,
+            code
+        FROM (
+            {PRODUCT_LOOKUP_SOURCES[lookup_key]}
+        ) AS lookup_source
+        WHERE
+            :q = ''
+            OR COALESCE(CONVERT(NVARCHAR(4000), label), '') LIKE :q_like
+            OR COALESCE(CONVERT(NVARCHAR(4000), code), '') LIKE :q_like
+        ORDER BY label
+        """
+    )
+    rows = db.execute(query, {"q": q.strip(), "q_like": f"%{q.strip()}%"}).fetchall()
+    return [dict(row._mapping) for row in rows]
 
 
 @router.post("/products/search")
