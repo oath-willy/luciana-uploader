@@ -10,6 +10,7 @@ from fastapi import HTTPException
 from api.routes import router
 from api import run_script
 from api import run_script_log
+from api import control_panel
 from api.db import products
 
 app = FastAPI()
@@ -36,6 +37,7 @@ def ping():
 # Include i router DOPO la creazione dell'app
 app.include_router(products.router, prefix="/api")
 app.include_router(router, prefix="/api")
+app.include_router(control_panel.router, prefix="/api")
 app.include_router(run_script.router, prefix="/api")
 app.include_router(run_script_log.router, prefix="/api")
 

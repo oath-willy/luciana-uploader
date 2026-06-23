@@ -32,6 +32,7 @@ import RunRScript from '../components/RunRScript';
 import RunRScriptLog from '../components/RunRScriptLog';
 import PDBCodifica from '../components/PDBCodifica';
 import ProductsTest from '../components/ProductsTest';
+import ControlPanel from '../components/ControlPanel';
 
 type UserData = {
   name: string;
@@ -153,7 +154,11 @@ export default function AdminDashboardPage() {
                     to="https://github.com/keystone-dev/luciana-project"
                   />
 
-                  <NavLink label={!navCollapsed ? "Settings" : ""} leftSection={<IconSettings size={18} />} />
+                  <NavLink label={!navCollapsed ? "Settings" : ""} leftSection={<IconSettings size={18} />}>
+                    {!navCollapsed && (
+                      <NavLink label="Control Panel" pl="md" component={Link} to="/navigator/control-panel" />
+                    )}
+                  </NavLink>
                 </Stack>
               </ScrollArea>
             </div>
@@ -202,6 +207,7 @@ export default function AdminDashboardPage() {
           <Route path="pdb-codifica" element={<Navigate to="/navigator/products" replace />} />
           <Route path="run-r-script" element={<RunRScript />} />
           <Route path="run-r-script-log" element={<RunRScriptLog />} />
+          <Route path="control-panel" element={<ControlPanel />} />
         </Routes>
       </AppShell.Main>
     </AppShell>
