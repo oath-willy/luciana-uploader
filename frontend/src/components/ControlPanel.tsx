@@ -29,6 +29,7 @@ type VmStatus = {
   is_running: boolean;
   rstudio_url: string;
   rstudio_users: number | null;
+  rstudio_usernames: string[];
   rstudio_users_available: boolean;
   rstudio_users_message: string;
 };
@@ -229,12 +230,7 @@ function VmCard({
             label="Status"
             value={vm.power_label || vm.power_state}
           />
-          <StatusLine
-            icon={<IconUsers size={18} />}
-            label="Utenti RStudio"
-            value={userText}
-            hint={vm.rstudio_users_message}
-          />
+          <UserStatusLine vm={vm} value={userText} />
         </SimpleGrid>
 
         <Group justify="space-between" mt="xs">
@@ -276,6 +272,45 @@ function VmCard({
         </Group>
       </Stack>
     </Card>
+  );
+}
+
+function UserStatusLine({ vm, value }: { vm: VmStatus; value: string }) {
+  const usernames = vm.rstudio_usernames || [];
+
+  return (
+    <Group gap="sm" align="flex-start">
+      <Box mt={2}>
+        <IconUsers size={18} />
+      </Box>
+      <Box style={{ minWidth: 0 }}>
+        <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+          Utenti RStudio
+        </Text>
+        <Text fw={600}>{value}</Text>
+        {vm.rstudio_users_available ? (
+          usernames.length > 0 ? (
+            <Group gap={4} mt={4}>
+              {usernames.map((username) => (
+                <Badge key={username} variant="light" color="blue" radius="sm">
+                  {username}
+                </Badge>
+              ))}
+            </Group>
+          ) : (
+            <Text size="xs" c="dimmed">
+              Nessuna sessione attiva
+            </Text>
+          )
+        ) : (
+          vm.rstudio_users_message && (
+            <Text size="xs" c="dimmed" lineClamp={2}>
+              {vm.rstudio_users_message}
+            </Text>
+          )
+        )}
+      </Box>
+    </Group>
   );
 }
 

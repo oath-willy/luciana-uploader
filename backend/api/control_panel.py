@@ -40,12 +40,12 @@ RSTUDIO_USERS_SCRIPT = r"""
 if command -v rstudio-server >/dev/null 2>&1; then
   sessions="$(rstudio-server active-sessions 2>/dev/null || true)"
   if [ -n "$sessions" ]; then
-    printf "%s\n" "$sessions" | grep -o -- '-u [^ ]*' | awk '{ print $2 }' | sort -u | wc -l
+    printf "%s\n" "$sessions" | grep -o -- '-u [^ ]*' | awk '{ print $2 }' | sort -u
   else
-    echo 0
+    true
   fi
 else
-  pgrep -af '[r]session' 2>/dev/null | grep -o -- '-u [^ ]*' | awk '{ print $2 }' | sort -u | wc -l
+  pgrep -af '[r]session' 2>/dev/null | grep -o -- '-u [^ ]*' | awk '{ print $2 }' | sort -u
 fi
 """
 
@@ -122,10 +122,11 @@ def _get_power_state(vm_name: str):
 
 def _get_rstudio_users(vm: Dict[str, str], is_running: bool):
     if not is_running:
-        return {"count": None, "available": False, "message": "VM spenta"}
+        return {"count": None, "usernames": [], "available": False, "message": "VM spenta"}
     if not SSH_PASSWORD:
         return {
             "count": None,
+            "usernames": [],
             "available": False,
             "message": "Password SSH non configurata",
         }
@@ -147,23 +148,29 @@ def _get_rstudio_users(vm: Dict[str, str], is_running: bool):
         ssh.close()
 
         if error and not output:
-            return {"count": None, "available": False, "message": error}
+            return {"count": None, "usernames": [], "available": False, "message": error}
 
-        count_line = next(
-            (line.strip() for line in reversed(output.splitlines()) if line.strip().isdigit()),
-            None,
+        usernames = sorted(
+            {
+                line.strip()
+                for line in output.splitlines()
+                if line.strip() and " " not in line.strip()
+            }
         )
 
-        if count_line is None:
-            return {
-                "count": None,
-                "available": False,
-                "message": output or "Conteggio non disponibile",
-            }
-
-        return {"count": int(count_line), "available": True, "message": ""}
+        return {
+            "count": len(usernames),
+            "usernames": usernames,
+            "available": True,
+            "message": "",
+        }
     except (paramiko.SSHException, socket.timeout, OSError) as exc:
-        return {"count": None, "available": False, "message": f"SSH non disponibile: {exc}"}
+        return {
+            "count": None,
+            "usernames": [],
+            "available": False,
+            "message": f"SSH non disponibile: {exc}",
+        }
 
 
 def _vm_status(vm: Dict[str, str]):
@@ -177,6 +184,7 @@ def _vm_status(vm: Dict[str, str]):
         "is_running": power["is_running"],
         "rstudio_url": vm["rstudio_url"],
         "rstudio_users": users["count"],
+        "rstudio_usernames": users["usernames"],
         "rstudio_users_available": users["available"],
         "rstudio_users_message": users["message"],
     }
