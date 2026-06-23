@@ -290,13 +290,18 @@ function UserStatusLine({ vm, value }: { vm: VmStatus; value: string }) {
         <Text fw={600}>{value}</Text>
         {vm.rstudio_users_available ? (
           usernames.length > 0 ? (
-            <Group gap={4} mt={4}>
-              {usernames.map((username) => (
-                <Badge key={username} variant="light" color="blue" radius="sm">
-                  {username}
-                </Badge>
-              ))}
-            </Group>
+            <Box mt={6}>
+              <Text size="xs" c="dimmed" fw={700}>
+                Lista utenti connessi:
+              </Text>
+              <Stack gap={3} mt={3}>
+                {usernames.map((username) => (
+                  <Text key={username} size="sm">
+                    {username}
+                  </Text>
+                ))}
+              </Stack>
+            </Box>
           ) : (
             <Text size="xs" c="dimmed">
               Nessuna sessione attiva
