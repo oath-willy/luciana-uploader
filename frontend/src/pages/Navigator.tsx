@@ -9,6 +9,7 @@ import {
   IconDatabase,
   IconChevronLeft,
   IconChevronRight,
+  IconWorld,
 } from '@tabler/icons-react';
 import {
   AppShell,
@@ -33,6 +34,7 @@ import RunRScriptLog from '../components/RunRScriptLog';
 import PDBCodifica from '../components/PDBCodifica';
 import ProductsTest from '../components/ProductsTest';
 import ControlPanel from '../components/ControlPanel';
+import CountriesDictionary from '../components/CountriesDictionary';
 
 type UserData = {
   name: string;
@@ -131,12 +133,18 @@ export default function AdminDashboardPage() {
                     )}
                   </NavLink>
 
-                  <NavLink label={!navCollapsed ? "Products" : ""} leftSection={<IconDatabase size={18} />}>
+                  <NavLink label={!navCollapsed ? "PDB" : ""} leftSection={<IconDatabase size={18} />}>
                     {!navCollapsed && (
                       <>
                         <NavLink label="Products" pl="md" component={Link} to="/navigator/products" />
                         <NavLink label="Products Test" pl="md" component={Link} to="/navigator/products-test" />
                       </>
+                    )}
+                  </NavLink>
+
+                  <NavLink label={!navCollapsed ? "Data Owning" : ""} leftSection={<IconWorld size={18} />}>
+                    {!navCollapsed && (
+                      <NavLink label="Countries Dictionary" pl="md" component={Link} to="/navigator/countries-dictionary" />
                     )}
                   </NavLink>
 
@@ -205,6 +213,7 @@ export default function AdminDashboardPage() {
           <Route path="products" element={<PDBCodifica />} />
           <Route path="products-test" element={<ProductsTest />} />
           <Route path="pdb-codifica" element={<Navigate to="/navigator/products" replace />} />
+          <Route path="countries-dictionary" element={<CountriesDictionary />} />
           <Route path="run-r-script" element={<RunRScript />} />
           <Route path="run-r-script-log" element={<RunRScriptLog />} />
           <Route path="control-panel" element={<ControlPanel />} />
