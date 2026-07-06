@@ -519,17 +519,11 @@ def get_product_companies(db: Session = Depends(get_db)):
     rows = db.execute(
         text(
             """
-            SELECT DISTINCT
+            SELECT
                 c.id,
                 c.company_name,
                 c.company_code
             FROM dbo.companies AS c
-            WHERE EXISTS (
-                SELECT 1
-                FROM dbo.prods_versions AS pv
-                WHERE pv.id_dealer = c.id
-                   OR pv.id_manufacturer = c.id
-            )
             ORDER BY c.company_name
             """
         )
