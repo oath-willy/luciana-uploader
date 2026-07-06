@@ -9,7 +9,6 @@ import {
   IconDatabase,
   IconChevronLeft,
   IconChevronRight,
-  IconWorld,
 } from '@tabler/icons-react';
 import {
   AppShell,
@@ -35,6 +34,10 @@ import PDBCodifica from '../components/PDBCodifica';
 import ProductsTest from '../components/ProductsTest';
 import ControlPanel from '../components/ControlPanel';
 import CountriesDictionary from '../components/CountriesDictionary';
+import Companies from '../components/database/Companies';
+import FatherNames from '../components/database/FatherNames';
+import Countries from '../components/database/Countries';
+import Currencies from '../components/database/Currencies';
 
 type UserData = {
   name: string;
@@ -47,6 +50,19 @@ export default function AdminDashboardPage() {
   const [navCollapsed, setNavCollapsed] = useState(false);
 
   useEffect(() => {
+    const isLocal =
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1';
+
+    if (isLocal) {
+      setUser({
+        name: 'local',
+        email: 'local@dev',
+      });
+      setLoading(false);
+      return;
+    }
+
     fetch('/.auth/me')
       .then((res) => res.json())
       .then((data) => {
@@ -133,18 +149,25 @@ export default function AdminDashboardPage() {
                     )}
                   </NavLink>
 
-                  <NavLink label={!navCollapsed ? "PDB" : ""} leftSection={<IconDatabase size={18} />}>
+                  <NavLink label={!navCollapsed ? "Database" : ""} leftSection={<IconDatabase size={18} />}>
                     {!navCollapsed && (
                       <>
-                        <NavLink label="Products" pl="md" component={Link} to="/navigator/products" />
-                        <NavLink label="Products Test" pl="md" component={Link} to="/navigator/products-test" />
-                      </>
-                    )}
-                  </NavLink>
+                        <NavLink label="PDB" pl="md">
+                          <NavLink label="Products" pl="lg" component={Link} to="/navigator/products" />
+                          <NavLink label="Products Test" pl="lg" component={Link} to="/navigator/products-test" />
+                          <NavLink label="Companies" pl="lg" component={Link} to="/navigator/companies" />
+                          <NavLink label="Father Names" pl="lg" component={Link} to="/navigator/father-names" />
+                        </NavLink>
 
-                  <NavLink label={!navCollapsed ? "Data Owning" : ""} leftSection={<IconWorld size={18} />}>
-                    {!navCollapsed && (
-                      <NavLink label="Countries Dictionary" pl="md" component={Link} to="/navigator/countries-dictionary" />
+                        <NavLink label="Domain Tables" pl="md">
+                          <NavLink label="Countries" pl="lg" component={Link} to="/navigator/countries" />
+                          <NavLink label="Currencies" pl="lg" component={Link} to="/navigator/currencies" />
+                        </NavLink>
+
+                        <NavLink label="Utilities" pl="md">
+                          <NavLink label="Countries Dictionary" pl="lg" component={Link} to="/navigator/countries-dictionary" />
+                        </NavLink>
+                      </>
                     )}
                   </NavLink>
 
@@ -212,6 +235,10 @@ export default function AdminDashboardPage() {
 
           <Route path="products" element={<PDBCodifica />} />
           <Route path="products-test" element={<ProductsTest />} />
+          <Route path="companies" element={<Companies />} />
+          <Route path="father-names" element={<FatherNames />} />
+          <Route path="countries" element={<Countries />} />
+          <Route path="currencies" element={<Currencies />} />
           <Route path="pdb-codifica" element={<Navigate to="/navigator/products" replace />} />
           <Route path="countries-dictionary" element={<CountriesDictionary />} />
           <Route path="run-r-script" element={<RunRScript />} />

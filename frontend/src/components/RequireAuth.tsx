@@ -7,7 +7,9 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const isLocal = window.location.hostname === "localhost";
+    const isLocal =
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1";
 
     if (isLocal) {
       console.log("🧪 Bypass autenticazione in locale");

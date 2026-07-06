@@ -62,7 +62,7 @@ export default function CountriesDictionary() {
   const [countryEdits, setCountryEdits] = useState<Record<number, CountryOption | null>>({});
   const [paginationModel, setPaginationModel] = useState<GridPaginationModel>({
     page: 0,
-    pageSize: 100,
+    pageSize: 50,
   });
   const [rowSelectionModel, setRowSelectionModel] =
     useState<GridRowSelectionModel>({

@@ -3,10 +3,12 @@ import os
 import socket
 import urllib.error
 import urllib.request
+import io
 from typing import Any, Dict, Literal
 
 import paramiko
 from azure.identity import DefaultAzureCredential
+from azure.keyvault.secrets import SecretClient
 from fastapi import APIRouter, HTTPException
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
@@ -51,6 +53,12 @@ fi
 
 SSH_USERNAME = os.getenv("CONTROL_PANEL_VM_USERNAME", "lucianauser")
 SSH_PASSWORD = os.getenv("CONTROL_PANEL_VM_PASSWORD", "")
+SSH_PRIVATE_KEY_SECRET = os.getenv(
+    "CONTROL_PANEL_SSH_PRIVATE_KEY_SECRET",
+    "ssh-private-key-lucianauser",
+)
+SSH_PRIVATE_KEY_PATH = os.getenv("SSH_PRIVATE_KEY_PATH", "./keys/lucianauser_key.pem")
+KEY_VAULT_NAME = os.getenv("KEY_VAULT_NAME", "luciana-project")
 
 
 class VmActionRequest(BaseModel):
@@ -120,57 +128,141 @@ def _get_power_state(vm_name: str):
     }
 
 
-def _get_rstudio_users(vm: Dict[str, str], is_running: bool):
-    if not is_running:
-        return {"count": None, "usernames": [], "available": False, "message": "VM spenta"}
-    if not SSH_PASSWORD:
-        return {
-            "count": None,
-            "usernames": [],
-            "available": False,
-            "message": "Password SSH non configurata",
+def _parse_rstudio_usernames(output: str):
+    return sorted(
+        {
+            line.strip()
+            for line in output.splitlines()
+            if line.strip() and " " not in line.strip()
         }
+    )
+
+
+def _load_ssh_key():
+    key_errors = []
+
+    if os.getenv("USE_KEYVAULT", "false").lower() == "true":
+        try:
+            key_vault_url = f"https://{KEY_VAULT_NAME}.vault.azure.net/"
+            client = SecretClient(vault_url=key_vault_url, credential=_credential())
+            secret = client.get_secret(SSH_PRIVATE_KEY_SECRET)
+            return paramiko.RSAKey.from_private_key(io.StringIO(secret.value))
+        except Exception as exc:
+            key_errors.append(f"Key Vault: {exc}")
+
+    try:
+        return paramiko.RSAKey.from_private_key_file(SSH_PRIVATE_KEY_PATH)
+    except Exception as exc:
+        key_errors.append(f"file key: {exc}")
+
+    return None, "; ".join(key_errors)
+
+
+def _get_rstudio_users_via_ssh(vm: Dict[str, str]):
+    key_result = _load_ssh_key()
+    if isinstance(key_result, tuple):
+        ssh_key = None
+        key_error = key_result[1]
+    else:
+        ssh_key = key_result
+        key_error = ""
 
     try:
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect(
-            hostname=vm["public_ip"],
-            username=SSH_USERNAME,
-            password=SSH_PASSWORD,
-            timeout=12,
-            banner_timeout=12,
-            auth_timeout=12,
-        )
+        connect_kwargs = {
+            "hostname": vm["public_ip"],
+            "username": SSH_USERNAME,
+            "timeout": 12,
+            "banner_timeout": 12,
+            "auth_timeout": 12,
+            "look_for_keys": False,
+            "allow_agent": False,
+        }
+        if ssh_key:
+            connect_kwargs["pkey"] = ssh_key
+        elif SSH_PASSWORD:
+            connect_kwargs["password"] = SSH_PASSWORD
+        else:
+            return None, f"Chiave SSH/password non configurata ({key_error})"
+
+        ssh.connect(**connect_kwargs)
         _, stdout, stderr = ssh.exec_command(RSTUDIO_USERS_SCRIPT, timeout=20)
         output = stdout.read().decode("utf-8", errors="replace").strip()
         error = stderr.read().decode("utf-8", errors="replace").strip()
         ssh.close()
 
         if error and not output:
-            return {"count": None, "usernames": [], "available": False, "message": error}
+            return None, error
 
-        usernames = sorted(
-            {
-                line.strip()
-                for line in output.splitlines()
-                if line.strip() and " " not in line.strip()
-            }
+        return _parse_rstudio_usernames(output), ""
+    except (paramiko.SSHException, socket.timeout, OSError) as exc:
+        return None, f"SSH non disponibile: {exc}"
+
+
+def _get_rstudio_users_via_run_command(vm: Dict[str, str]):
+    try:
+        result = _arm_request(
+            "POST",
+            f"{_vm_path(vm['name'], '/runCommand')}?api-version={ARM_API_VERSION}",
+            body={
+                "commandId": "RunShellScript",
+                "script": RSTUDIO_USERS_SCRIPT.strip().splitlines(),
+            },
+            timeout=90,
         )
 
-        return {
-            "count": len(usernames),
-            "usernames": usernames,
-            "available": True,
-            "message": "",
-        }
-    except (paramiko.SSHException, socket.timeout, OSError) as exc:
+        stdout_messages = []
+        stderr_messages = []
+        for item in result.get("value", []):
+            code = item.get("code", "")
+            message = item.get("message", "")
+            if "StdOut" in code:
+                stdout_messages.append(message)
+            elif "StdErr" in code:
+                stderr_messages.append(message)
+
+        output = "\n".join(stdout_messages).strip()
+        error = "\n".join(stderr_messages).strip()
+        if error and not output:
+            return None, f"Azure Run Command: {error}"
+
+        return _parse_rstudio_usernames(output), ""
+    except HTTPException as exc:
+        return None, str(exc.detail)
+    except Exception as exc:
+        return None, f"Azure Run Command non disponibile: {exc}"
+
+
+def _get_rstudio_users(vm: Dict[str, str], is_running: bool):
+    if not is_running:
         return {
             "count": None,
             "usernames": [],
             "available": False,
-            "message": f"SSH non disponibile: {exc}",
+            "message": "VM spenta",
         }
+
+    usernames, ssh_error = _get_rstudio_users_via_ssh(vm)
+    if usernames is None:
+        usernames, run_command_error = _get_rstudio_users_via_run_command(vm)
+    else:
+        run_command_error = ""
+
+    if usernames is None:
+        return {
+            "count": None,
+            "usernames": [],
+            "available": False,
+            "message": run_command_error or ssh_error or "Utenti RStudio non disponibili",
+        }
+
+    return {
+        "count": len(usernames),
+        "usernames": usernames,
+        "available": True,
+        "message": "",
+    }
 
 
 def _vm_status(vm: Dict[str, str]):

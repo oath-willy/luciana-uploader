@@ -42,14 +42,24 @@ type LookupOption = {
 };
 type ProductLookups = Record<string, LookupOption[]>;
 type LookupSearchParams = Record<string, string | number | null | undefined>;
+type ExtraAttributeField = {
+  id: number;
+  field_code: string;
+  field_name: string;
+  field_key: string;
+  val_type: string;
+  is_multi_val: boolean;
+  is_active: boolean;
+};
 
 type ProductsProps = {
   title?: string;
   enableDetailPanel?: boolean;
+  includeExtraAttributes?: boolean;
 };
 
 const backendBaseUrl = process.env.REACT_APP_BACKEND_URL || "";
-const pageSizeOptions = [25, 50, 100, 250, 500, 1000, { value: -1, label: "Full" }];
+const pageSizeOptions = [25, 50, 100, 500];
 
 const baseColumns: GridColDef[] = [
   { field: "id_prod_version", headerName: "Prod Version ID", width: 130 },
@@ -155,6 +165,7 @@ const staticLookupKeys = [
 export default function Products({
   title = "Products",
   enableDetailPanel = false,
+  includeExtraAttributes = false,
 }: ProductsProps) {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
@@ -173,10 +184,11 @@ export default function Products({
   const [selectedProduct, setSelectedProduct] = useState<ProductRow | null>(null);
   const [draftProduct, setDraftProduct] = useState<ProductRow | null>(null);
   const [productLookups, setProductLookups] = useState<ProductLookups>({});
+  const [extraAttributeFields, setExtraAttributeFields] = useState<ExtraAttributeField[]>([]);
   const [loadingLookups, setLoadingLookups] = useState<Record<string, boolean>>({});
   const [paginationModel, setPaginationModel] = useState<GridPaginationModel>({
     page: 0,
-    pageSize: 100,
+    pageSize: 50,
   });
   const [rowSelectionModel, setRowSelectionModel] =
     useState<GridRowSelectionModel>({
@@ -195,6 +207,21 @@ export default function Products({
       .catch((err) => setError(err.message || "Errore caricamento aziende"))
       .finally(() => setLoadingCompanies(false));
   }, []);
+
+  useEffect(() => {
+    if (!includeExtraAttributes) {
+      setExtraAttributeFields([]);
+      return;
+    }
+
+    fetch(`${backendBaseUrl}/api/products/extra-attribute-fields`)
+      .then((res) => {
+        if (!res.ok) throw new Error("Impossibile caricare gli attributi extra");
+        return res.json();
+      })
+      .then((data) => setExtraAttributeFields(Array.isArray(data) ? data : []))
+      .catch((err) => setError(err.message || "Errore caricamento attributi extra"));
+  }, [includeExtraAttributes]);
 
   const fetchProductLookup = useCallback(async (
     lookupKey: string,
@@ -274,18 +301,17 @@ export default function Products({
     setRows([]);
 
     try {
-      const isFull = paginationModel.pageSize === -1;
       const response = await fetch(`${backendBaseUrl}/api/products/search`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id_company: selectedCompany.id,
           company_role: companyRole,
-          page: isFull ? 0 : paginationModel.page,
-          page_size: isFull ? 1000 : paginationModel.pageSize,
-          full: isFull,
+          page: paginationModel.page,
+          page_size: paginationModel.pageSize,
           search: debouncedSearch.trim(),
           filters: cleanFilters(debouncedColumnFilters),
+          include_extra_attributes: includeExtraAttributes,
         }),
       });
 
@@ -297,6 +323,9 @@ export default function Products({
       const data = await response.json();
       const responseRows = Array.isArray(data) ? data : data.rows || [];
       const responseTotal = Array.isArray(data) ? responseRows.length : data.total || 0;
+      if (!Array.isArray(data) && includeExtraAttributes) {
+        setExtraAttributeFields(data.extra_attribute_fields || []);
+      }
 
       setRows(
         responseRows.map((row: any, index: number) => ({
@@ -318,6 +347,7 @@ export default function Products({
     debouncedSearch,
     debouncedColumnFilters,
     cleanFilters,
+    includeExtraAttributes,
   ]);
 
   useEffect(() => {
@@ -456,9 +486,35 @@ export default function Products({
     setPaginationModel((current) => ({ ...current, page: 0 }));
   };
 
+  const displayColumns = useMemo(() => {
+    if (!includeExtraAttributes) {
+      return baseColumns;
+    }
+
+    const extraColumns = extraAttributeFields.map((field) => ({
+      field: field.field_key,
+      headerName: field.field_name || field.field_code,
+      width: 180,
+      sortable: false,
+    }));
+
+    const itemCodeIndex = baseColumns.findIndex(
+      (column) => column.field === "company_item_code"
+    );
+    if (itemCodeIndex < 0) {
+      return [...baseColumns, ...extraColumns];
+    }
+
+    return [
+      ...baseColumns.slice(0, itemCodeIndex + 1),
+      ...extraColumns,
+      ...baseColumns.slice(itemCodeIndex + 1),
+    ];
+  }, [includeExtraAttributes, extraAttributeFields]);
+
   const columns = useMemo(
     () =>
-      baseColumns.map((column) => ({
+      displayColumns.map((column) => ({
         ...column,
         renderHeader: () => {
           const value = columnFilters[column.field] || "";
@@ -517,7 +573,7 @@ export default function Products({
           );
         },
       })),
-    [columnFilters, handleColumnFilterChange, clearColumnFilter]
+    [displayColumns, columnFilters, handleColumnFilterChange, clearColumnFilter]
   );
 
   return (

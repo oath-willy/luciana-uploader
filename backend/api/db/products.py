@@ -3,7 +3,7 @@ from typing import Any, Dict, Literal, Tuple
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 from sqlalchemy.orm import Session
 
 from services.db import get_db
@@ -13,8 +13,8 @@ router = APIRouter()
 
 CompanyRole = Literal["dealer", "manufacturer", "any"]
 
-PAGE_SIZE_OPTIONS = {25, 50, 100, 250, 500, 1000}
-DEFAULT_PAGE_SIZE = 100
+PAGE_SIZE_OPTIONS = {25, 50, 100, 500}
+DEFAULT_PAGE_SIZE = 50
 
 PRODUCT_FIELDS = {
     "id_prod_version",
@@ -81,9 +81,9 @@ class ProductSearchRequest(BaseModel):
     company_role: CompanyRole = "any"
     page: int = 0
     page_size: int = DEFAULT_PAGE_SIZE
-    full: bool = False
     search: str = ""
     filters: Dict[str, Any] = Field(default_factory=dict)
+    include_extra_attributes: bool = False
 
 
 PRODUCT_LOOKUP_SOURCES = {
@@ -329,9 +329,66 @@ def _filter_value(value: Any) -> str:
     return str(value).strip()
 
 
-def _build_filter_clause(request: ProductSearchRequest) -> Tuple[str, Dict[str, Any]]:
+def _extra_attribute_value_expression(alias: str = "ea", allowed_alias: str = "av") -> str:
+    return f"""
+        COALESCE(
+            CONVERT(NVARCHAR(1000), {allowed_alias}.val_label),
+            CONVERT(NVARCHAR(1000), {allowed_alias}.val_code),
+            CONVERT(NVARCHAR(1000), {alias}.val_text),
+            CONVERT(NVARCHAR(1000), {alias}.val_decimal),
+            CONVERT(NVARCHAR(1000), {alias}.val_integer),
+            CASE
+                WHEN {alias}.val_boolean = 1 THEN N'true'
+                WHEN {alias}.val_boolean = 0 THEN N'false'
+                ELSE NULL
+            END,
+            CONVERT(NVARCHAR(1000), {alias}.val_date, 23),
+            CONVERT(NVARCHAR(1000), {alias}.source_raw_val)
+        )
+    """
+
+
+def _extra_attribute_key(field: Dict[str, Any]) -> str:
+    code = _filter_value(field.get("field_code")) or str(field["id"])
+    safe_code = "".join(char if char.isalnum() or char == "_" else "_" for char in code)
+    return f"extra_attr_{safe_code.lower()}"
+
+
+def _get_extra_attribute_fields(db: Session):
+    rows = db.execute(
+        text(
+            """
+            SELECT
+                id,
+                field_code,
+                field_name,
+                val_type,
+                is_multi_val,
+                is_active
+            FROM dbo.prods_extra_attrib_fields
+            WHERE is_active = 1
+            ORDER BY id
+            """
+        )
+    ).fetchall()
+
+    fields = []
+    for row in rows:
+        field = dict(row._mapping)
+        field["field_key"] = _extra_attribute_key(field)
+        fields.append(field)
+    return fields
+
+
+def _build_filter_clause(
+    request: ProductSearchRequest,
+    extra_attribute_fields=None,
+) -> Tuple[str, Dict[str, Any]]:
     conditions = []
     params: Dict[str, Any] = {"id_company": request.id_company}
+    extra_field_by_key = {
+        field["field_key"]: field for field in (extra_attribute_fields or [])
+    }
 
     search = _filter_value(request.search)
     if search:
@@ -339,11 +396,32 @@ def _build_filter_clause(request: ProductSearchRequest) -> Tuple[str, Dict[str, 
         params["search"] = f"%{search}%"
 
     for field, raw_value in request.filters.items():
-        if field not in PRODUCT_FIELDS:
-            continue
-
         value = _filter_value(raw_value)
         if not value:
+            continue
+
+        if field in extra_field_by_key:
+            param_name = f"extra_filter_{field}"
+            field_param_name = f"extra_field_{field}"
+            value_expression = _extra_attribute_value_expression()
+            conditions.append(
+                f"""
+                EXISTS (
+                    SELECT 1
+                    FROM dbo.prods_extra_attrib AS ea
+                    LEFT JOIN dbo.prods_extra_attrib_allowed_val AS av
+                        ON av.id = ea.id_prod_extra_attrib_allowed_val
+                    WHERE ea.id_prod_version = products_base.id_prod_version
+                      AND ea.id_prod_extra_attrib_field = :{field_param_name}
+                      AND COALESCE({value_expression}, N'') LIKE :{param_name}
+                )
+                """
+            )
+            params[field_param_name] = extra_field_by_key[field]["id"]
+            params[param_name] = f"%{value}%"
+            continue
+
+        if field not in PRODUCT_FIELDS:
             continue
 
         param_name = f"filter_{field}"
@@ -375,11 +453,7 @@ def _count_query(company_role: CompanyRole, filter_clause: str):
     )
 
 
-def _rows_query(company_role: CompanyRole, filter_clause: str, full: bool):
-    pagination_clause = ""
-    if not full:
-        pagination_clause = "OFFSET :offset ROWS FETCH NEXT :page_size ROWS ONLY"
-
+def _rows_query(company_role: CompanyRole, filter_clause: str):
     return text(
         f"""
         WITH products_base AS (
@@ -389,9 +463,55 @@ def _rows_query(company_role: CompanyRole, filter_clause: str, full: bool):
         FROM products_base
         {filter_clause}
         ORDER BY [company_item_code], [version], [id_prod_version]
-        {pagination_clause}
+        OFFSET :offset ROWS FETCH NEXT :page_size ROWS ONLY
         """
     )
+
+
+def _fetch_extra_attribute_values(db: Session, prod_version_ids, fields):
+    if not prod_version_ids or not fields:
+        return {}
+
+    field_ids = [field["id"] for field in fields]
+    field_key_by_id = {field["id"]: field["field_key"] for field in fields}
+    value_expression = _extra_attribute_value_expression()
+    query = text(
+        f"""
+        SELECT
+            ea.id_prod_version,
+            ea.id_prod_extra_attrib_field,
+            STRING_AGG(CONVERT(NVARCHAR(MAX), {value_expression}), N', ') AS display_value
+        FROM dbo.prods_extra_attrib AS ea
+        LEFT JOIN dbo.prods_extra_attrib_allowed_val AS av
+            ON av.id = ea.id_prod_extra_attrib_allowed_val
+        WHERE ea.id_prod_version IN :prod_version_ids
+          AND ea.id_prod_extra_attrib_field IN :field_ids
+        GROUP BY ea.id_prod_version, ea.id_prod_extra_attrib_field
+        """
+    ).bindparams(
+        bindparam("prod_version_ids", expanding=True),
+        bindparam("field_ids", expanding=True),
+    )
+
+    rows = db.execute(
+        query,
+        {
+            "prod_version_ids": tuple(prod_version_ids),
+            "field_ids": tuple(field_ids),
+        },
+    ).fetchall()
+
+    values_by_version = {}
+    for row in rows:
+        value = dict(row._mapping)
+        field_key = field_key_by_id.get(value["id_prod_extra_attrib_field"])
+        if not field_key:
+            continue
+        values_by_version.setdefault(value["id_prod_version"], {})[field_key] = value[
+            "display_value"
+        ]
+
+    return values_by_version
 
 
 @router.get("/products/companies")
@@ -453,6 +573,11 @@ def get_product_lookup(
     )
 
 
+@router.get("/products/extra-attribute-fields")
+def get_product_extra_attribute_fields(db: Session = Depends(get_db)):
+    return jsonable_encoder(_get_extra_attribute_fields(db))
+
+
 def _fetch_product_lookup(
     db: Session,
     lookup_key: str,
@@ -511,35 +636,52 @@ def search_products(request: ProductSearchRequest, db: Session = Depends(get_db)
         raise HTTPException(status_code=400, detail="Company non valida")
     if request.page < 0:
         raise HTTPException(status_code=400, detail="page non puo essere negativa")
-    if not request.full and request.page_size not in PAGE_SIZE_OPTIONS:
+    if request.page_size not in PAGE_SIZE_OPTIONS:
         raise HTTPException(
             status_code=400,
-            detail="page_size deve essere uno tra 25, 50, 100, 250, 500, 1000",
+            detail="page_size deve essere uno tra 25, 50, 100, 500",
         )
 
-    filter_clause, params = _build_filter_clause(request)
+    extra_attribute_fields = (
+        _get_extra_attribute_fields(db) if request.include_extra_attributes else []
+    )
+    filter_clause, params = _build_filter_clause(request, extra_attribute_fields)
     total = (
         db.execute(_count_query(request.company_role, filter_clause), params).scalar()
         or 0
     )
 
     query_params = dict(params)
-    if not request.full:
-        query_params["offset"] = request.page * request.page_size
-        query_params["page_size"] = request.page_size
+    query_params["offset"] = request.page * request.page_size
+    query_params["page_size"] = request.page_size
 
     rows = db.execute(
-        _rows_query(request.company_role, filter_clause, request.full),
+        _rows_query(request.company_role, filter_clause),
         query_params,
     ).fetchall()
+    response_rows = [dict(row._mapping) for row in rows]
+
+    if request.include_extra_attributes and response_rows:
+        prod_version_ids = [
+            row["id_prod_version"]
+            for row in response_rows
+            if row.get("id_prod_version") is not None
+        ]
+        extra_values = _fetch_extra_attribute_values(
+            db,
+            prod_version_ids,
+            extra_attribute_fields,
+        )
+        for row in response_rows:
+            row.update(extra_values.get(row.get("id_prod_version"), {}))
 
     return jsonable_encoder(
         {
-            "rows": [dict(row._mapping) for row in rows],
+            "rows": response_rows,
             "total": total,
-            "page": 0 if request.full else request.page,
-            "page_size": None if request.full else request.page_size,
-            "full": request.full,
+            "page": request.page,
+            "page_size": request.page_size,
+            "extra_attribute_fields": extra_attribute_fields,
         }
     )
 

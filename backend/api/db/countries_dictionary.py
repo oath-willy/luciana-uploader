@@ -14,7 +14,7 @@ router = APIRouter()
 DictionaryStatus = Literal["all", "validated", "non_validated", "id_country_null"]
 
 PAGE_SIZE_OPTIONS = {25, 50, 100, 500}
-DEFAULT_PAGE_SIZE = 100
+DEFAULT_PAGE_SIZE = 50
 DICTIONARY_DATABASE = os.getenv("SQL_DICTIONARY_DATABASE", "luciana_db")
 
 FILTER_FIELDS = {
