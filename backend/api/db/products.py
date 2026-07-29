@@ -88,7 +88,7 @@ class ProductSearchRequest(BaseModel):
 
 PRODUCT_LOOKUP_SOURCES = {
     "companies": """
-        SELECT id, company_name AS label, company_code AS code
+        SELECT id, company_name AS label, NULL AS code
         FROM dbo.companies
     """,
     "prefix_encodings": """
@@ -191,11 +191,11 @@ PRODUCTS_BASE_QUERY = """
 
         pv.id_dealer,
         dealer.company_name AS dealer_company_name,
-        dealer.company_code AS dealer_company_code,
+        NULL AS dealer_company_code,
 
-        pv.id_manufacturer,
+        pv.id_brand AS id_manufacturer,
         manufacturer.company_name AS manufacturer_company_name,
-        manufacturer.company_code AS manufacturer_company_code,
+        NULL AS manufacturer_company_code,
 
         pv.id_prefix_encoding,
         pe.prefix_encoding,
@@ -257,7 +257,7 @@ PRODUCTS_BASE_QUERY = """
         ON dealer.id = pv.id_dealer
 
     LEFT JOIN dbo.companies AS manufacturer
-        ON manufacturer.id = pv.id_manufacturer
+        ON manufacturer.id = pv.id_brand
 
     LEFT JOIN dbo.prods_prefix_encodings AS pe
         ON pe.id = pv.id_prefix_encoding
@@ -318,8 +318,8 @@ PRODUCTS_BASE_QUERY = """
 
 COMPANY_FILTERS = {
     "dealer": "pv.id_dealer = :id_company",
-    "manufacturer": "pv.id_manufacturer = :id_company",
-    "any": "(pv.id_dealer = :id_company OR pv.id_manufacturer = :id_company)",
+    "manufacturer": "pv.id_brand = :id_company",
+    "any": "(pv.id_dealer = :id_company OR pv.id_brand = :id_company)",
 }
 
 
@@ -522,7 +522,7 @@ def get_product_companies(db: Session = Depends(get_db)):
             SELECT
                 c.id,
                 c.company_name,
-                c.company_code
+                NULL AS company_code
             FROM dbo.companies AS c
             ORDER BY c.company_name
             """
