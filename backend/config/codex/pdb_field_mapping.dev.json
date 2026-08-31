@@ -1,0 +1,58 @@
+{
+  "source": {
+    "repository": "https://github.com/Key-Stone-SRL/dtl_sell-out",
+    "branch": "dev",
+    "commit": "2fd707a007e37319669b38c7b54bc883ff0c0973",
+    "path": "src/ingestion/pdb_field_mapping.json"
+  },
+  "companies": {
+    "EURONDA": {
+      "mapping_key": "euronda",
+      "landing_table": "landing_euronda",
+      "extra_fields": [
+        "item_description",
+        "product_family_level_1",
+        "brand_company",
+        "item_code",
+        "channel_raw",
+        "customer_raw",
+        "file_name"
+      ]
+    },
+    "INTVENT": {
+      "mapping_key": "intvent",
+      "landing_table": "landing_intvent",
+      "extra_fields": [
+        "item_description",
+        "product_family_level_1",
+        "manufacturer_item_code",
+        "brand_company",
+        "channel_raw",
+        "customer_raw",
+        "file_name"
+      ]
+    },
+    "IVOCLAR": {
+      "mapping_key": "ivoclar",
+      "landing_table": "landing_ivoclar",
+      "extra_fields": [
+        "item_description",
+        "brand_company",
+        "channel_raw",
+        "customer_raw",
+        "file_name"
+      ]
+    },
+    "HERAEUS": {
+      "mapping_key": "kulzer",
+      "landing_table": "landing_kulzer",
+      "extra_fields": [
+        "item_description",
+        "brand_company",
+        "channel_raw",
+        "customer_raw",
+        "file_name"
+      ]
+    }
+  }
+}

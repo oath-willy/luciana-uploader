@@ -14,6 +14,7 @@ from api.routes import router
 from api import run_script
 from api import run_script_log
 from api import control_panel
+from api import codex
 from api.db import products
 from api.db import countries_dictionary
 from api.db import database_tables
@@ -43,6 +44,7 @@ def ping():
 app.include_router(products.router, prefix="/api")
 app.include_router(countries_dictionary.router, prefix="/api")
 app.include_router(database_tables.router, prefix="/api")
+app.include_router(codex.router, prefix="/api")
 app.include_router(router, prefix="/api")
 app.include_router(control_panel.router, prefix="/api")
 app.include_router(run_script.router, prefix="/api")

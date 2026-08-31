@@ -9,5 +9,6 @@ azure-storage-file-datalake>=12.9.0
 paramiko
 azure-identity
 azure-keyvault-secrets
+requests>=2.31,<3
 sqlalchemy
 pyodbc

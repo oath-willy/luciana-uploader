@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { GridColDef, GridRenderCellParams } from "@mui/x-data-grid";
-import { Alert, Box, Button, Checkbox, TextField } from "@mui/material";
+import { Alert, Box, Checkbox, TextField } from "@mui/material";
+import CrudActionButton from "../common/CrudActionButton";
 import ServerDataGrid from "../common/ServerDataGrid";
 import { backendBaseUrl, fetchDatabaseTable } from "./databaseApi";
 
@@ -166,13 +167,13 @@ export default function Companies() {
         refreshToken={refreshToken}
         rowHeight={46}
         toolbarLeft={
-          <Button
-            variant="contained"
+          <CrudActionButton
+            crudAction="save"
             onClick={saveChanges}
             disabled={saving || Object.keys(edits).length === 0}
           >
             {saving ? "Saving..." : "Save changes"}
-          </Button>
+          </CrudActionButton>
         }
       />
     </Box>

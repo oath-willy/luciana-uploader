@@ -38,6 +38,8 @@ import Companies from '../components/database/Companies';
 import FatherNames from '../components/database/FatherNames';
 import Countries from '../components/database/Countries';
 import Currencies from '../components/database/Currencies';
+import CountriesCurrencies from '../components/database/CountriesCurrencies';
+import Codex from '../components/Codex';
 
 type UserData = {
   name: string;
@@ -155,6 +157,7 @@ export default function AdminDashboardPage() {
                         <NavLink label="PDB" pl="md">
                           <NavLink label="Products" pl="lg" component={Link} to="/navigator/products" />
                           <NavLink label="Products Test" pl="lg" component={Link} to="/navigator/products-test" />
+                          <NavLink label="CODEX" pl="lg" component={Link} to="/navigator/codex" />
                           <NavLink label="Companies" pl="lg" component={Link} to="/navigator/companies" />
                           <NavLink label="Father Names" pl="lg" component={Link} to="/navigator/father-names" />
                         </NavLink>
@@ -162,6 +165,7 @@ export default function AdminDashboardPage() {
                         <NavLink label="Domain Tables" pl="md">
                           <NavLink label="Countries" pl="lg" component={Link} to="/navigator/countries" />
                           <NavLink label="Currencies" pl="lg" component={Link} to="/navigator/currencies" />
+                          <NavLink label="Countries Currencies" pl="lg" component={Link} to="/navigator/countries-currencies" />
                         </NavLink>
 
                         <NavLink label="Utilities" pl="md">
@@ -235,10 +239,12 @@ export default function AdminDashboardPage() {
 
           <Route path="products" element={<PDBCodifica />} />
           <Route path="products-test" element={<ProductsTest />} />
+          <Route path="codex" element={<Codex />} />
           <Route path="companies" element={<Companies />} />
           <Route path="father-names" element={<FatherNames />} />
           <Route path="countries" element={<Countries />} />
           <Route path="currencies" element={<Currencies />} />
+          <Route path="countries-currencies" element={<CountriesCurrencies />} />
           <Route path="pdb-codifica" element={<Navigate to="/navigator/products" replace />} />
           <Route path="countries-dictionary" element={<CountriesDictionary />} />
           <Route path="run-r-script" element={<RunRScript />} />

@@ -45,6 +45,7 @@ type ServerDataGridProps = {
   onRowClick?: (params: GridRowParams) => void;
   rowHeight?: number;
   height?: string | number;
+  emptyMessage?: string;
 };
 
 export default function ServerDataGrid({
@@ -64,6 +65,7 @@ export default function ServerDataGrid({
   onRowClick,
   rowHeight = 36,
   height = "89vh",
+  emptyMessage = "Nessun dato",
 }: ServerDataGridProps) {
   const [rows, setRows] = useState<any[]>([]);
   const [rowCount, setRowCount] = useState(0);
@@ -254,12 +256,31 @@ export default function ServerDataGrid({
           flexWrap: "wrap",
         }}
       >
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, flexWrap: "wrap" }}>
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 1.5,
+            flex: "1 1 640px",
+            minWidth: 0,
+            maxWidth: "100%",
+            flexWrap: "wrap",
+          }}
+        >
           <h2 style={{ margin: 0 }}>{title}</h2>
           {toolbarLeft}
         </Box>
 
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+            minWidth: 0,
+            maxWidth: "100%",
+            flexWrap: "wrap",
+          }}
+        >
           {toolbarRight}
           <TextField
             size="small"
@@ -318,6 +339,7 @@ export default function ServerDataGrid({
           setRowSelectionModel(newSelection)
         }
         onRowClick={onRowClick}
+        localeText={{ noRowsLabel: emptyMessage }}
         slots={{
           footer: () => (
             <CustomFooter
