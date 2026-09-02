@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DataGrid,
   GridColDef,
@@ -39,11 +39,16 @@ type ServerDataGridProps = {
   toolbarLeft?: React.ReactNode;
   toolbarRight?: React.ReactNode;
   refreshToken?: number;
+  silentRefresh?: boolean;
+  selectionResetToken?: number;
   checkboxSelection?: boolean;
   onSelectionChange?: (ids: Set<number | string>, rows: any[]) => void;
   onRowsChange?: (rows: any[]) => void;
   onRowClick?: (params: GridRowParams) => void;
   rowHeight?: number;
+  getRowHeight?: (params: any) => number | "auto" | null | undefined;
+  getRowClassName?: (params: any) => string;
+  isRowSelectable?: (params: GridRowParams) => boolean;
   height?: string | number;
   emptyMessage?: string;
 };
@@ -59,11 +64,16 @@ export default function ServerDataGrid({
   toolbarLeft,
   toolbarRight,
   refreshToken = 0,
+  silentRefresh = false,
+  selectionResetToken = 0,
   checkboxSelection = false,
   onSelectionChange,
   onRowsChange,
   onRowClick,
   rowHeight = 36,
+  getRowHeight,
+  getRowClassName,
+  isRowSelectable,
   height = "89vh",
   emptyMessage = "Nessun dato",
 }: ServerDataGridProps) {
@@ -84,6 +94,7 @@ export default function ServerDataGrid({
       type: "include",
       ids: new Set(),
     });
+  const hasLoadedRows = useRef(false);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -101,7 +112,9 @@ export default function ServerDataGrid({
   }, [search, columnFilters]);
 
   const loadRows = useCallback(async () => {
-    setLoading(true);
+    if (!silentRefresh || !hasLoadedRows.current) {
+      setLoading(true);
+    }
     setError("");
 
     try {
@@ -114,6 +127,7 @@ export default function ServerDataGrid({
 
       setRows(result.rows);
       setRowCount(result.total);
+      hasLoadedRows.current = true;
       onRowsChange?.(result.rows);
     } catch (err: any) {
       setRows([]);
@@ -128,11 +142,16 @@ export default function ServerDataGrid({
     debouncedSearch,
     debouncedColumnFilters,
     onRowsChange,
+    silentRefresh,
   ]);
 
   useEffect(() => {
     loadRows();
   }, [loadRows, refreshToken]);
+
+  useEffect(() => {
+    setRowSelectionModel({ type: "include", ids: new Set() });
+  }, [selectionResetToken]);
 
   const selectedIds = useMemo(() => {
     if (rowSelectionModel.type !== "include") {
@@ -245,7 +264,16 @@ export default function ServerDataGrid({
   );
 
   return (
-    <Box sx={{ height, width: "100%", p: 0 }}>
+    <Box
+      sx={{
+        height,
+        width: "100%",
+        minHeight: 0,
+        p: 0,
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
       <Box
         sx={{
           display: "flex",
@@ -321,11 +349,26 @@ export default function ServerDataGrid({
       )}
 
       <DataGrid
+        sx={{
+          flex: 1,
+          minHeight: 0,
+          "& .codex-row-locked": {
+            bgcolor: "action.disabledBackground",
+            color: "text.secondary",
+          },
+          "& .codex-row-locked:hover": {
+            bgcolor: "action.disabledBackground",
+          },
+        }}
         rows={rows}
         columns={renderedColumns}
         getRowId={getRowId}
         loading={loading}
         rowHeight={rowHeight}
+        getRowHeight={getRowHeight}
+        getEstimatedRowHeight={() => 190}
+        getRowClassName={getRowClassName}
+        isRowSelectable={isRowSelectable}
         columnHeaderHeight={76}
         paginationMode="server"
         rowCount={rowCount}

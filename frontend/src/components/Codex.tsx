@@ -1,17 +1,21 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GridColDef, GridRowParams } from "@mui/x-data-grid";
 import {
   Alert,
   Autocomplete,
   Box,
   Button,
+  Chip,
   CircularProgress,
   FormControl,
   IconButton,
   InputLabel,
+  LinearProgress,
   MenuItem,
   Paper,
+  Radio,
   Select,
+  Stack,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
@@ -53,6 +57,9 @@ type CodexConfig = {
   dataset_name: string;
   max_extra_columns: number;
   lookup_actions_available: boolean;
+  fuzzy_lookup_actions_available?: boolean;
+  ai_lookup_actions_available?: boolean;
+  bs25_actions_available?: boolean;
   mapping_source?: {
     repository: string;
     branch: string;
@@ -70,8 +77,92 @@ type CodexDetailResponse = {
   extra_columns: CodexColumn[];
 };
 
+type Bs25Proposal = {
+  identity_rank: number;
+  identity_score: number;
+  exact_match: boolean;
+  pdb_ref: string;
+  pdb_description: string;
+  master_code?: string | null;
+  manufacturer?: string | null;
+  father_name?: string | null;
+  pack?: string | null;
+  feature?: string | null;
+  measure?: string | null;
+};
+
+type PendingBs25Selection = {
+  environment: CodexEnvironmentName;
+  company: string;
+  itemCode: string;
+  companyItemCode: string;
+  rank: number;
+  startedAt: number;
+  requestId: string;
+  lastSubmittedAt?: number;
+};
+
 const backendBaseUrl = process.env.REACT_APP_BACKEND_URL || "";
 const MAX_EXTRA_COLUMNS = 12;
+const BS25_SELECTION_OUTBOX_KEY = "codex.bs25.selection-outbox.v1";
+
+function bs25SelectionKey(
+  environment: CodexEnvironmentName,
+  company: string,
+  itemCode: string
+) {
+  return JSON.stringify([environment, company.trim().toUpperCase(), itemCode.trim()]);
+}
+
+function createSelectionRequestId() {
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}${Math.random()
+    .toString(36)
+    .slice(2)}`;
+}
+
+function loadPendingBs25Selections(): Record<string, PendingBs25Selection> {
+  if (typeof window === "undefined") {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(
+      window.localStorage.getItem(BS25_SELECTION_OUTBOX_KEY) || "{}"
+    );
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+    return Object.fromEntries(
+      Object.entries(parsed).filter(([, value]: [string, any]) =>
+        Boolean(
+          value &&
+            ["dev", "prod"].includes(value.environment) &&
+            typeof value.company === "string" &&
+            typeof value.itemCode === "string" &&
+            typeof value.companyItemCode === "string" &&
+            Number.isInteger(value.rank) &&
+            value.rank >= 1 &&
+            value.rank <= 3 &&
+            typeof value.requestId === "string"
+        )
+      )
+    ) as Record<string, PendingBs25Selection>;
+  } catch {
+    return {};
+  }
+}
+
+function persistPendingBs25Selections(
+  selections: Record<string, PendingBs25Selection>
+) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  if (Object.keys(selections).length === 0) {
+    window.localStorage.removeItem(BS25_SELECTION_OUTBOX_KEY);
+    return;
+  }
+  window.localStorage.setItem(BS25_SELECTION_OUTBOX_KEY, JSON.stringify(selections));
+}
 
 const lightColumns: GridColDef[] = [
   {
@@ -85,6 +176,13 @@ const lightColumns: GridColDef[] = [
     headerName: "Description",
     minWidth: 340,
     flex: 1,
+  },
+  {
+    field: "bs25_status",
+    headerName: "BS25",
+    width: 160,
+    sortable: false,
+    renderCell: (params) => <Bs25StatusCell row={params.row} />,
   },
   {
     field: "fuzzy_lookup_status",
@@ -106,6 +204,9 @@ const emptyConfig: CodexConfig = {
   dataset_name: "",
   max_extra_columns: MAX_EXTRA_COLUMNS,
   lookup_actions_available: false,
+  fuzzy_lookup_actions_available: false,
+  ai_lookup_actions_available: false,
+  bs25_actions_available: false,
 };
 
 function toGridColumn(column: CodexColumn): GridColDef {
@@ -135,9 +236,17 @@ export default function Codex() {
   const [selectedCompany, setSelectedCompany] =
     useState<CodexCompany | null>(null);
   const [extraColumns, setExtraColumns] = useState<CodexColumn[]>([]);
-  const [selectedIds, setSelectedIds] = useState<Set<string | number>>(
-    new Set()
-  );
+  const [selectedRows, setSelectedRows] = useState<Record<string, any>[]>([]);
+  const [visibleRows, setVisibleRows] = useState<Record<string, any>[]>([]);
+  const [refreshToken, setRefreshToken] = useState(0);
+  const [selectionResetToken, setSelectionResetToken] = useState(0);
+  const [bs25Busy, setBs25Busy] = useState(false);
+  const [pendingSelections, setPendingSelections] = useState<
+    Record<string, PendingBs25Selection>
+  >(loadPendingBs25Selections);
+  const activeSelectionRequests = useRef<Set<string>>(new Set());
+  const [actionError, setActionError] = useState("");
+  const [actionMessage, setActionMessage] = useState("");
   const [detailRow, setDetailRow] = useState<Record<string, any> | null>(null);
   const [detailColumns, setDetailColumns] = useState<CodexColumn[]>([]);
   const [loadingConfig, setLoadingConfig] = useState(true);
@@ -145,6 +254,10 @@ export default function Codex() {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [setupError, setSetupError] = useState("");
   const [detailError, setDetailError] = useState("");
+
+  useEffect(() => {
+    persistPendingBs25Selections(pendingSelections);
+  }, [pendingSelections]);
 
   useEffect(() => {
     let active = true;
@@ -193,7 +306,7 @@ export default function Codex() {
     let active = true;
     setCompanies([]);
     setSelectedCompany(null);
-    setSelectedIds(new Set());
+    setSelectedRows([]);
     setExtraColumns([]);
     setDetailRow(null);
     setDetailError("");
@@ -237,18 +350,228 @@ export default function Codex() {
     };
   }, [environment, loadingConfig, selectedEnvironment?.available]);
 
+  const sendPendingSelection = useCallback(
+    async (rowKey: string, pending: PendingBs25Selection) => {
+      if (activeSelectionRequests.current.has(pending.requestId)) {
+        return;
+      }
+      const now = Date.now();
+      if (
+        pending.lastSubmittedAt &&
+        now - pending.lastSubmittedAt < 60000
+      ) {
+        return;
+      }
+
+      activeSelectionRequests.current.add(pending.requestId);
+      setPendingSelections((current) => {
+        if (current[rowKey]?.requestId !== pending.requestId) {
+          return current;
+        }
+        const next = {
+          ...current,
+          [rowKey]: { ...current[rowKey], lastSubmittedAt: now },
+        };
+        persistPendingBs25Selections(next);
+        return next;
+      });
+
+      try {
+        const response = await fetch(`${backendBaseUrl}/api/codex/bs25/select`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            environment: pending.environment,
+            company: pending.company,
+            item_code: pending.itemCode,
+            proposal_rank: pending.rank,
+            selection_request_id: pending.requestId,
+          }),
+        });
+        if (!response.ok) {
+          throw new Error(
+            await responseError(response, "Impossibile trasmettere la scelta BS25")
+          );
+        }
+        const result = await response.json();
+        if (result.selected) {
+          setPendingSelections((current) => {
+            if (current[rowKey]?.requestId !== pending.requestId) {
+              return current;
+            }
+            const next = { ...current };
+            delete next[rowKey];
+            persistPendingBs25Selections(next);
+            return next;
+          });
+          setActionMessage(`Scelta BS25 salvata per ${pending.companyItemCode}`);
+          setRefreshToken((current) => current + 1);
+          return;
+        }
+        if (
+          result.selection_request_id &&
+          result.selection_request_id !== pending.requestId
+        ) {
+          setPendingSelections((current) => {
+            if (current[rowKey]?.requestId !== pending.requestId) {
+              return current;
+            }
+            const next = {
+              ...current,
+              [rowKey]: {
+                ...current[rowKey],
+                requestId: result.selection_request_id,
+              },
+            };
+            persistPendingBs25Selections(next);
+            return next;
+          });
+        }
+        setRefreshToken((current) => current + 1);
+      } catch (error: any) {
+        setActionError(
+          `${pending.companyItemCode}: ${
+            error.message || "errore trasmissione scelta BS25"
+          }. La scelta resta memorizzata e verra ritentata.`
+        );
+      } finally {
+        activeSelectionRequests.current.delete(pending.requestId);
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    const dispatchPending = () => {
+      Object.entries(pendingSelections).forEach(([rowKey, pending]) => {
+        void sendPendingSelection(rowKey, pending);
+      });
+    };
+    dispatchPending();
+    const interval = window.setInterval(dispatchPending, 10000);
+    return () => window.clearInterval(interval);
+  }, [pendingSelections, sendPendingSelection]);
+
+  const handleProposalSelect = useCallback(
+    (row: Record<string, any>, proposalRank: number) => {
+      if (!selectedCompany) {
+        return;
+      }
+      const rowKey = bs25SelectionKey(
+        environment,
+        selectedCompany.value,
+        row.item_code
+      );
+      if (
+        pendingSelections[rowKey] ||
+        Number(row.bs25_selected_proposal_rank) === proposalRank
+      ) {
+        return;
+      }
+
+      const pending: PendingBs25Selection = {
+        environment,
+        company: selectedCompany.value,
+        itemCode: String(row.item_code),
+        companyItemCode: String(row.company_item_code),
+        rank: proposalRank,
+        startedAt: Date.now(),
+        requestId: createSelectionRequestId(),
+      };
+      persistPendingBs25Selections({
+        ...pendingSelections,
+        [rowKey]: pending,
+      });
+      setPendingSelections((current) => ({ ...current, [rowKey]: pending }));
+      setActionError("");
+      setActionMessage("");
+    },
+    [environment, pendingSelections, selectedCompany]
+  );
+
   const columns = useMemo(() => {
+    const proposalColumns: GridColDef[] = [1, 2, 3].map((rank) => ({
+      field: `bs25_proposal_${rank}`,
+      headerName: `Proposta BS25 ${rank}`,
+      width: 330,
+      minWidth: 300,
+      sortable: false,
+      filterable: false,
+      renderCell: (params) => {
+        const pending = selectedCompany
+          ? pendingSelections[
+              bs25SelectionKey(
+                environment,
+                selectedCompany.value,
+                params.row.item_code
+              )
+            ]
+          : undefined;
+        const serverSaving = params.row.bs25_selection_status === "saving";
+        return (
+          <ProposalCell
+            row={params.row}
+            proposal={params.value as Bs25Proposal | null}
+            rank={rank}
+            saving={Boolean(pending) || serverSaving}
+            optimisticRank={
+              pending?.rank ??
+              (serverSaving
+                ? Number(params.row.bs25_pending_proposal_rank)
+                : undefined)
+            }
+            onSelect={handleProposalSelect}
+          />
+        );
+      },
+    }));
+
+    const leadingColumns = [lightColumns[0], lightColumns[1]];
+    const bs25StatusColumn: GridColDef = {
+      ...lightColumns[2],
+      renderCell: (params) => {
+        const pending = selectedCompany
+          ? pendingSelections[
+              bs25SelectionKey(
+                environment,
+                selectedCompany.value,
+                params.row.item_code
+              )
+            ]
+          : undefined;
+        return (
+          <Bs25StatusCell
+            row={params.row}
+            optimisticRank={pending?.rank}
+          />
+        );
+      },
+    };
+    const futureLookupColumns = lightColumns.slice(3);
     if (view === "light") {
-      return lightColumns;
+      return [
+        ...leadingColumns,
+        bs25StatusColumn,
+        ...proposalColumns,
+        ...futureLookupColumns,
+      ];
     }
 
     return [
-      lightColumns[0],
-      lightColumns[1],
+      ...leadingColumns,
       ...extraColumns.slice(0, MAX_EXTRA_COLUMNS).map(toGridColumn),
-      ...lightColumns.slice(-2),
+      bs25StatusColumn,
+      ...proposalColumns,
+      ...futureLookupColumns,
     ];
-  }, [extraColumns, view]);
+  }, [
+    environment,
+    extraColumns,
+    handleProposalSelect,
+    pendingSelections,
+    selectedCompany,
+    view,
+  ]);
 
   const filterFields = useMemo(
     () =>
@@ -256,7 +579,10 @@ export default function Codex() {
         .map((column) => column.field)
         .filter(
           (field) =>
-            field !== "fuzzy_lookup_status" && field !== "ai_lookup_status"
+            field !== "fuzzy_lookup_status" &&
+            field !== "ai_lookup_status" &&
+            field !== "bs25_status" &&
+            !field.startsWith("bs25_proposal_")
         ),
     [columns]
   );
@@ -310,9 +636,136 @@ export default function Codex() {
   );
 
   const handleSelectionChange = useCallback(
-    (ids: Set<string | number>) => setSelectedIds(ids),
+    (ids: Set<string | number>, rows: any[]) => {
+      setSelectedRows(
+        rows.filter((row) => ids.has(row.id) && !row.bs25_status)
+      );
+    },
     []
   );
+
+  const handleRowsChange = useCallback((rows: any[]) => {
+    setVisibleRows(rows);
+  }, []);
+
+  useEffect(() => {
+    const hasVisiblePendingSelection =
+      Boolean(selectedCompany) &&
+      visibleRows.some((row) =>
+        Boolean(
+          pendingSelections[
+            bs25SelectionKey(
+              environment,
+              selectedCompany!.value,
+              row.item_code
+            )
+          ]
+        )
+      );
+    const hasActiveOperation =
+      hasVisiblePendingSelection ||
+      visibleRows.some(
+        (row) =>
+          ["queued", "analyzing"].includes(row.bs25_status) ||
+          row.bs25_selection_status === "saving"
+      );
+    if (!hasActiveOperation) {
+      return;
+    }
+    const interval = window.setInterval(
+      () => setRefreshToken((current) => current + 1),
+      3000
+    );
+    return () => window.clearInterval(interval);
+  }, [environment, pendingSelections, selectedCompany, visibleRows]);
+
+  useEffect(() => {
+    const completed: string[] = [];
+
+    Object.entries(pendingSelections).forEach(([rowKey, pending]) => {
+      if (
+        pending.environment !== environment ||
+        pending.company.trim().toUpperCase() !==
+          selectedCompany?.value.trim().toUpperCase()
+      ) {
+        return;
+      }
+      const row = visibleRows.find(
+        (item) => String(item.item_code) === pending.itemCode
+      );
+      if (!row) {
+        return;
+      }
+      const completedWithRequestId =
+        row.bs25_selection_request_id === pending.requestId &&
+        row.bs25_selection_status === "completed" &&
+        Number(row.bs25_selected_proposal_rank) === pending.rank;
+      const completedByLegacyBackend =
+        !row.bs25_selection_request_id &&
+        row.bs25_selection_status !== "saving" &&
+        Number(row.bs25_selected_proposal_rank) === pending.rank;
+      if (completedWithRequestId || completedByLegacyBackend) {
+        completed.push(rowKey);
+      }
+    });
+
+    if (completed.length === 0) {
+      return;
+    }
+    setPendingSelections((current) => {
+      const next = { ...current };
+      completed.forEach((rowKey) => delete next[rowKey]);
+      persistPendingBs25Selections(next);
+      return next;
+    });
+    setActionMessage(
+      `${completed.length} ${
+        completed.length === 1
+          ? "scelta BS25 salvata"
+          : "scelte BS25 salvate"
+      }`
+    );
+  }, [environment, pendingSelections, selectedCompany, visibleRows]);
+
+  const handleBs25Lookup = useCallback(async () => {
+    if (!selectedCompany || selectedRows.length === 0) {
+      return;
+    }
+    setBs25Busy(true);
+    setActionError("");
+    setActionMessage("");
+    try {
+      const response = await fetch(`${backendBaseUrl}/api/codex/bs25`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          environment,
+          company: selectedCompany.value,
+          item_codes: selectedRows.map((row) => row.item_code),
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(
+          await responseError(response, "Impossibile avviare BS25")
+        );
+      }
+      const result = await response.json();
+      const accepted = result.accepted_item_codes?.length || 0;
+      const locked = result.locked_item_codes?.length || 0;
+      setActionMessage(
+        `${accepted} record inviati in analisi${
+          locked ? `; ${locked} erano gia bloccati` : ""
+        }`
+      );
+      setSelectedRows([]);
+      setSelectionResetToken((current) => current + 1);
+      setRefreshToken((current) => current + 1);
+    } catch (error: any) {
+      setActionError(error.message || "Errore avvio BS25");
+    } finally {
+      setBs25Busy(false);
+    }
+  }, [environment, selectedCompany, selectedRows]);
 
   const handleRowClick = useCallback(
     async (params: GridRowParams) => {
@@ -357,7 +810,7 @@ export default function Codex() {
       return;
     }
     setView(nextView);
-    setSelectedIds(new Set());
+    setSelectedRows([]);
     setDetailRow(null);
     setDetailError("");
     if (nextView === "light") {
@@ -365,13 +818,16 @@ export default function Codex() {
     }
   };
 
-  const lookupDisabled =
-    !config.lookup_actions_available || selectedIds.size === 0;
-  const lookupTooltip = !config.lookup_actions_available
-    ? "API di lookup non ancora configurata"
-    : selectedIds.size === 0
+  const bs25Available = config.bs25_actions_available ?? false;
+  const bs25Disabled = !bs25Available || selectedRows.length === 0 || bs25Busy;
+  const bs25Tooltip = !bs25Available
+    ? "BS25 non ancora configurato"
+    : selectedRows.length === 0
       ? "Seleziona almeno un record"
       : "";
+  const fuzzyLookupAvailable = config.fuzzy_lookup_actions_available ?? false;
+  const aiLookupAvailable =
+    config.ai_lookup_actions_available ?? config.lookup_actions_available;
 
   const toolbarLeft = (
     <>
@@ -400,7 +856,7 @@ export default function Codex() {
         value={selectedCompany}
         onChange={(_, company) => {
           setSelectedCompany(company);
-          setSelectedIds(new Set());
+          setSelectedRows([]);
           setExtraColumns([]);
           setDetailRow(null);
           setDetailError("");
@@ -440,23 +896,41 @@ export default function Codex() {
         <ToggleButton value="full">Full</ToggleButton>
       </ToggleButtonGroup>
 
-      <Tooltip title={lookupTooltip} disableHoverListener={!lookupTooltip}>
+      <Tooltip
+        title={fuzzyLookupAvailable ? "" : "Fuzzy Lookup non ancora configurato"}
+      >
         <span>
           <Button
             variant="outlined"
             startIcon={<ScanSearch size={17} />}
-            disabled={lookupDisabled}
+            disabled={!fuzzyLookupAvailable}
           >
             Fuzzy Lookup
           </Button>
         </span>
       </Tooltip>
-      <Tooltip title={lookupTooltip} disableHoverListener={!lookupTooltip}>
+      <Tooltip title={bs25Tooltip} disableHoverListener={!bs25Tooltip}>
         <span>
           <Button
             variant="contained"
+            startIcon={
+              bs25Busy ? <CircularProgress size={16} color="inherit" /> : <ScanSearch size={17} />
+            }
+            disabled={bs25Disabled}
+            onClick={handleBs25Lookup}
+          >
+            {bs25Busy ? "Invio..." : `BS25${selectedRows.length ? ` (${selectedRows.length})` : ""}`}
+          </Button>
+        </span>
+      </Tooltip>
+      <Tooltip
+        title={aiLookupAvailable ? "" : "AI Lookup non ancora configurato"}
+      >
+        <span>
+          <Button
+            variant="outlined"
             startIcon={<Sparkles size={17} />}
-            disabled={lookupDisabled}
+            disabled={!aiLookupAvailable}
           >
             AI Lookup
           </Button>
@@ -472,17 +946,15 @@ export default function Codex() {
       : "Seleziona una company";
 
   return (
-    <Box sx={{ height: "89vh", width: "100%" }}>
-      <Typography
-        component="div"
-        sx={{ mb: 0.75, color: "text.secondary", fontSize: 13 }}
-      >
-        Company selezionata:{" "}
-        <Box component="span" sx={{ color: "text.primary", fontWeight: 600 }}>
-          {selectedCompany?.label || "Nessuna"}
-        </Box>
-      </Typography>
-
+    <Box
+      sx={{
+        height: "calc(100dvh - 16px)",
+        width: "100%",
+        minHeight: 0,
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
       {!selectedEnvironment?.available && selectedEnvironment?.message && (
         <Alert severity="warning" sx={{ mb: 1 }}>
           {selectedEnvironment.message}
@@ -496,49 +968,257 @@ export default function Codex() {
           </Alert>
         )}
       {setupError && (
-        <Alert severity="error" sx={{ mb: 1 }}>
+        <Alert
+          severity="error"
+          sx={{ mb: 1, cursor: "pointer" }}
+          onClick={() => setSetupError("")}
+        >
           {setupError}
         </Alert>
       )}
       {detailError && (
-        <Alert severity="error" sx={{ mb: 1 }}>
+        <Alert
+          severity="error"
+          sx={{ mb: 1, cursor: "pointer" }}
+          onClick={() => setDetailError("")}
+        >
           {detailError}
         </Alert>
       )}
-
-      <ServerDataGrid
-        key={`${environment}-${selectedCompany?.value || "none"}-${view}`}
-        title="CODEX"
-        columns={columns}
-        fetchRows={fetchRows}
-        getRowId={(row) => row.id}
-        pageSizeOptions={[25, 50, 100, 250, 500]}
-        defaultPageSize={100}
-        filterFields={filterFields}
-        toolbarLeft={toolbarLeft}
-        checkboxSelection
-        onSelectionChange={handleSelectionChange}
-        onRowClick={handleRowClick}
-        rowHeight={34}
-        height={detailRow || loadingDetail ? "50vh" : "calc(89vh - 24px)"}
-        emptyMessage={emptyMessage}
-      />
-
-      {loadingDetail && (
-        <Paper
-          variant="outlined"
-          sx={{ mt: 1, height: "36vh", display: "grid", placeItems: "center" }}
+      {actionError && (
+        <Alert
+          severity="error"
+          sx={{ mb: 1, cursor: "pointer" }}
+          onClick={() => setActionError("")}
+          onClose={() => setActionError("")}
         >
-          <CircularProgress size={28} />
-        </Paper>
+          {actionError}
+        </Alert>
       )}
-      {detailRow && !loadingDetail && (
-        <CodexDetailPanel
-          row={detailRow}
-          columns={detailColumns}
-          onClose={() => setDetailRow(null)}
+      {actionMessage && (
+        <Alert
+          severity="success"
+          sx={{ mb: 1, cursor: "pointer" }}
+          onClick={() => setActionMessage("")}
+          onClose={() => setActionMessage("")}
+        >
+          {actionMessage}
+        </Alert>
+      )}
+
+      <Box
+        sx={{
+          flex: 1,
+          minHeight: 0,
+          display: "grid",
+          gridTemplateRows:
+            detailRow || loadingDetail
+              ? "minmax(260px, 3fr) minmax(220px, 2fr)"
+              : "minmax(0, 1fr)",
+          gap: detailRow || loadingDetail ? 1 : 0,
+        }}
+      >
+        <ServerDataGrid
+          key={`${environment}-${selectedCompany?.value || "none"}-${view}`}
+          title="CODEX"
+          columns={columns}
+          fetchRows={fetchRows}
+          getRowId={(row) => row.id}
+          pageSizeOptions={[25, 50, 100, 250, 500]}
+          defaultPageSize={100}
+          filterFields={filterFields}
+          toolbarLeft={toolbarLeft}
+          checkboxSelection
+          onSelectionChange={handleSelectionChange}
+          onRowsChange={handleRowsChange}
+          onRowClick={handleRowClick}
+          rowHeight={34}
+          getRowHeight={(params) =>
+            params.model.bs25_status === "completed" ? "auto" : 52
+          }
+          getRowClassName={(params) => {
+            const lookupRunning = ["queued", "analyzing"].includes(
+              params.row.bs25_status
+            );
+            const localPending = selectedCompany
+              ? pendingSelections[
+                  bs25SelectionKey(
+                    environment,
+                    selectedCompany.value,
+                    params.row.item_code
+                  )
+                ]
+              : undefined;
+            const selectionSaving =
+              Boolean(localPending) ||
+              params.row.bs25_selection_status === "saving";
+            return lookupRunning || selectionSaving ? "codex-row-locked" : "";
+          }}
+          isRowSelectable={(params) => !params.row.bs25_status}
+          refreshToken={refreshToken}
+          silentRefresh
+          selectionResetToken={selectionResetToken}
+          height="100%"
+          emptyMessage={emptyMessage}
         />
-      )}
+
+        {loadingDetail && (
+          <Paper
+            variant="outlined"
+            sx={{ minHeight: 0, display: "grid", placeItems: "center" }}
+          >
+            <CircularProgress size={28} />
+          </Paper>
+        )}
+        {detailRow && !loadingDetail && (
+          <CodexDetailPanel
+            row={detailRow}
+            columns={detailColumns}
+            onClose={() => setDetailRow(null)}
+          />
+        )}
+      </Box>
+    </Box>
+  );
+}
+
+function Bs25StatusCell({
+  row,
+  optimisticRank,
+}: {
+  row: Record<string, any>;
+  optimisticRank?: number;
+}) {
+  const status = row.bs25_status;
+  if (!status) {
+    return <Typography variant="body2" color="text.secondary">-</Typography>;
+  }
+  if (status === "analyzing" || status === "queued") {
+    return <Chip size="small" color="warning" label="Analyzing" />;
+  }
+  if (status === "failed") {
+    return <Chip size="small" color="error" label="Errore" />;
+  }
+  const selectionSaving =
+    optimisticRank !== undefined || row.bs25_selection_status === "saving";
+  if (selectionSaving) {
+    const pendingRank =
+      optimisticRank ?? Number(row.bs25_pending_proposal_rank);
+    return (
+      <Stack spacing={0.75} sx={{ width: "100%", pr: 1 }}>
+        <Chip
+          size="small"
+          color="warning"
+          label={`Salvataggio scelta ${pendingRank || ""}`.trim()}
+        />
+        <LinearProgress color="warning" />
+      </Stack>
+    );
+  }
+  if (row.bs25_selection_status === "failed") {
+    return <Chip size="small" color="error" label="Salvataggio fallito" />;
+  }
+  if (status === "completed" && row.bs25_selected_proposal_rank) {
+    return (
+      <Stack spacing={0.5} alignItems="flex-start">
+        <Chip
+          size="small"
+          color="success"
+          label={`Scelta ${row.bs25_selected_proposal_rank}`}
+        />
+        {row.bs25_selected_master_code && (
+          <Typography variant="caption" fontWeight={700}>
+            {row.bs25_selected_master_code}
+          </Typography>
+        )}
+      </Stack>
+    );
+  }
+  return <Chip size="small" color="info" label="Da selezionare" />;
+}
+
+function ProposalCell({
+  row,
+  proposal,
+  rank,
+  saving,
+  optimisticRank,
+  onSelect,
+}: {
+  row: Record<string, any>;
+  proposal: Bs25Proposal | null;
+  rank: number;
+  saving: boolean;
+  optimisticRank?: number;
+  onSelect: (row: Record<string, any>, proposalRank: number) => void;
+}) {
+  if (!proposal) {
+    return (
+      <Typography variant="caption" color="text.secondary">
+        {row.bs25_status === "analyzing" ? "In elaborazione..." : "-"}
+      </Typography>
+    );
+  }
+
+  const selected =
+    Number(optimisticRank ?? row.bs25_selected_proposal_rank) === rank;
+  const details = [
+    proposal.manufacturer,
+    proposal.father_name,
+    proposal.pack,
+    proposal.measure,
+  ].filter(Boolean);
+  const evidence = proposal.exact_match
+    ? "Descrizione normalizzata esatta"
+    : proposal.identity_score > 0
+      ? "Similarita lessicale BM25"
+      : "Nessuna evidenza lessicale";
+
+  return (
+    <Box
+      sx={{
+        width: "100%",
+        py: 1,
+        pr: 0.75,
+        whiteSpace: "normal",
+        lineHeight: 1.25,
+      }}
+      onClick={(event) => event.stopPropagation()}
+    >
+      <Stack spacing={0.55}>
+        <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1 }}>
+          <Typography variant="subtitle2" fontWeight={800}>
+            {proposal.master_code || "Master Code non disponibile"}
+          </Typography>
+          <Radio
+            size="small"
+            checked={selected}
+            disabled={saving}
+            onChange={() => onSelect(row, rank)}
+            inputProps={{ "aria-label": `Seleziona proposta ${rank}` }}
+            sx={{ p: 0.25 }}
+          />
+        </Box>
+        <Typography variant="body2" sx={{ overflowWrap: "anywhere" }}>
+          {proposal.pdb_description}
+        </Typography>
+        <Typography variant="caption" color="text.secondary">
+          PDB: {proposal.pdb_ref}
+        </Typography>
+        <Typography variant="caption" color="text.secondary">
+          {evidence} · score ordinale {proposal.identity_score.toFixed(4)}
+        </Typography>
+        {details.length > 0 && (
+          <Typography variant="caption" color="text.secondary">
+            {details.join(" · ")}
+          </Typography>
+        )}
+        {proposal.feature && (
+          <Typography variant="caption" color="text.secondary">
+            {proposal.feature}
+          </Typography>
+        )}
+      </Stack>
     </Box>
   );
 }
@@ -595,9 +1275,8 @@ function CodexDetailPanel({
     <Paper
       variant="outlined"
       sx={{
-        mt: 1,
-        height: "36vh",
-        minHeight: 240,
+        height: "100%",
+        minHeight: 0,
         overflow: "hidden",
         borderRadius: 1,
       }}
