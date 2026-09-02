@@ -41,8 +41,10 @@ type ServerDataGridProps = {
   refreshToken?: number;
   silentRefresh?: boolean;
   selectionResetToken?: number;
+  externalSelection?: { token: number; rows: any[] };
   checkboxSelection?: boolean;
   onSelectionChange?: (ids: Set<number | string>, rows: any[]) => void;
+  onQueryChange?: (params: ServerGridFetchParams) => void;
   onRowsChange?: (rows: any[]) => void;
   onRowClick?: (params: GridRowParams) => void;
   rowHeight?: number;
@@ -66,8 +68,10 @@ export default function ServerDataGrid({
   refreshToken = 0,
   silentRefresh = false,
   selectionResetToken = 0,
+  externalSelection,
   checkboxSelection = false,
   onSelectionChange,
+  onQueryChange,
   onRowsChange,
   onRowClick,
   rowHeight = 36,
@@ -95,6 +99,7 @@ export default function ServerDataGrid({
       ids: new Set(),
     });
   const hasLoadedRows = useRef(false);
+  const selectionRowsCache = useRef<Map<number | string, any>>(new Map());
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -126,6 +131,10 @@ export default function ServerDataGrid({
       });
 
       setRows(result.rows);
+      result.rows.forEach((row) => {
+        const id = getRowId ? getRowId(row) : row.id;
+        selectionRowsCache.current.set(id, row);
+      });
       setRowCount(result.total);
       hasLoadedRows.current = true;
       onRowsChange?.(result.rows);
@@ -142,6 +151,7 @@ export default function ServerDataGrid({
     debouncedSearch,
     debouncedColumnFilters,
     onRowsChange,
+    getRowId,
     silentRefresh,
   ]);
 
@@ -151,7 +161,21 @@ export default function ServerDataGrid({
 
   useEffect(() => {
     setRowSelectionModel({ type: "include", ids: new Set() });
+    selectionRowsCache.current.clear();
   }, [selectionResetToken]);
+
+  useEffect(() => {
+    if (!externalSelection) {
+      return;
+    }
+    const ids = new Set<number | string>();
+    externalSelection.rows.forEach((row) => {
+      const id = getRowId ? getRowId(row) : row.id;
+      ids.add(id);
+      selectionRowsCache.current.set(id, row);
+    });
+    setRowSelectionModel({ type: "include", ids });
+  }, [externalSelection?.token, externalSelection, getRowId]);
 
   const selectedIds = useMemo(() => {
     if (rowSelectionModel.type !== "include") {
@@ -162,8 +186,25 @@ export default function ServerDataGrid({
   }, [rowSelectionModel]);
 
   useEffect(() => {
-    onSelectionChange?.(selectedIds, rows);
+    const selectedRows = Array.from(selectedIds)
+      .map((id) => selectionRowsCache.current.get(id))
+      .filter(Boolean);
+    onSelectionChange?.(selectedIds, selectedRows);
   }, [selectedIds, rows, onSelectionChange]);
+
+  useEffect(() => {
+    onQueryChange?.({
+      page: paginationModel.page,
+      pageSize: paginationModel.pageSize,
+      search: debouncedSearch,
+      filters: debouncedColumnFilters,
+    });
+  }, [
+    paginationModel,
+    debouncedSearch,
+    debouncedColumnFilters,
+    onQueryChange,
+  ]);
 
   const visibleFilterFields = filterFields || columns.map((column) => column.field);
   const hasActiveFilters =
@@ -376,6 +417,7 @@ export default function ServerDataGrid({
         onPaginationModelChange={(model) => setPaginationModel(model)}
         pageSizeOptions={pageSizeOptions}
         checkboxSelection={checkboxSelection}
+        keepNonExistentRowsSelected
         disableRowSelectionOnClick
         rowSelectionModel={rowSelectionModel}
         onRowSelectionModelChange={(newSelection) =>

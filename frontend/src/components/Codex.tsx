@@ -11,6 +11,7 @@ import {
   IconButton,
   InputLabel,
   LinearProgress,
+  Link,
   MenuItem,
   Paper,
   Radio,
@@ -22,7 +23,7 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import { ScanSearch, Sparkles, X } from "lucide-react";
+import { CheckSquare, RefreshCw, ScanSearch, Sparkles, X } from "lucide-react";
 import ServerDataGrid, {
   ServerGridFetchParams,
   ServerGridResult,
@@ -60,6 +61,10 @@ type CodexConfig = {
   fuzzy_lookup_actions_available?: boolean;
   ai_lookup_actions_available?: boolean;
   bs25_actions_available?: boolean;
+  bs25ai_actions_available?: boolean;
+  data_source?: string;
+  pdb_available?: Record<CodexEnvironmentName, boolean>;
+  bs25ai_mock_mode?: boolean;
   mapping_source?: {
     repository: string;
     branch: string;
@@ -91,20 +96,41 @@ type Bs25Proposal = {
   measure?: string | null;
 };
 
+type Bs25SelectionKind = "proposal" | "clear";
+
+type Bs25Draft = {
+  kind: Bs25SelectionKind;
+  rank?: number;
+  updatedAt: number;
+};
+
 type PendingBs25Selection = {
   environment: CodexEnvironmentName;
   company: string;
   itemCode: string;
   companyItemCode: string;
-  rank: number;
+  kind: Bs25SelectionKind;
+  rank?: number;
   startedAt: number;
   requestId: string;
   lastSubmittedAt?: number;
 };
 
+type Bs25AiResult = {
+  decision: "match" | "ambiguous" | "unresolved";
+  selected_candidate_rank?: number | null;
+  proposed_master_code?: string | null;
+  confidence?: "high" | "medium" | "low" | null;
+  rationale?: string;
+  components?: Record<string, string | null> | null;
+  evidence?: Array<{ url: string; title: string; basis: string }>;
+  simulated?: boolean;
+};
+
 const backendBaseUrl = process.env.REACT_APP_BACKEND_URL || "";
 const MAX_EXTRA_COLUMNS = 12;
 const BS25_SELECTION_OUTBOX_KEY = "codex.bs25.selection-outbox.v1";
+const BS25_DRAFTS_KEY = "codex.bs25.drafts.v1";
 
 function bs25SelectionKey(
   environment: CodexEnvironmentName,
@@ -139,13 +165,37 @@ function loadPendingBs25Selections(): Record<string, PendingBs25Selection> {
             typeof value.company === "string" &&
             typeof value.itemCode === "string" &&
             typeof value.companyItemCode === "string" &&
-            Number.isInteger(value.rank) &&
-            value.rank >= 1 &&
-            value.rank <= 3 &&
+            ["proposal", "clear"].includes(value.kind) &&
+            (value.kind !== "proposal" ||
+              (Number.isInteger(value.rank) && value.rank >= 1 && value.rank <= 3)) &&
             typeof value.requestId === "string"
         )
       )
     ) as Record<string, PendingBs25Selection>;
+  } catch {
+    return {};
+  }
+}
+
+function loadBs25Drafts(): Record<string, Bs25Draft> {
+  if (typeof window === "undefined") {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(BS25_DRAFTS_KEY) || "{}");
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+    return Object.fromEntries(
+      Object.entries(parsed).filter(([, value]: [string, any]) =>
+        Boolean(
+          value &&
+            ["proposal", "clear"].includes(value.kind) &&
+            (value.kind !== "proposal" ||
+              (Number.isInteger(value.rank) && value.rank >= 1 && value.rank <= 3))
+        )
+      )
+    ) as Record<string, Bs25Draft>;
   } catch {
     return {};
   }
@@ -164,6 +214,42 @@ function persistPendingBs25Selections(
   window.localStorage.setItem(BS25_SELECTION_OUTBOX_KEY, JSON.stringify(selections));
 }
 
+function persistBs25Drafts(drafts: Record<string, Bs25Draft>) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  if (Object.keys(drafts).length === 0) {
+    window.localStorage.removeItem(BS25_DRAFTS_KEY);
+    return;
+  }
+  window.localStorage.setItem(BS25_DRAFTS_KEY, JSON.stringify(drafts));
+}
+
+function rowHasBs25Candidates(row: Record<string, any>) {
+  return (
+    row.bs25_status === "completed" &&
+    [1, 2, 3].every((rank) => Boolean(row[`bs25_proposal_${rank}`]))
+  );
+}
+
+function rowHasUnsavedBs25(row: Record<string, any>) {
+  return (
+    rowHasBs25Candidates(row) &&
+    !row.bs25_selection_status &&
+    !row.bs25_selected_source &&
+    !row.aibs25_status
+  );
+}
+
+function rowNeedsBs25(row: Record<string, any>) {
+  return (
+    !rowHasBs25Candidates(row) &&
+    !["queued", "analyzing"].includes(row.bs25_status) &&
+    !row.aibs25_status &&
+    !row.bs25_selection_status
+  );
+}
+
 const lightColumns: GridColDef[] = [
   {
     field: "company_item_code",
@@ -180,9 +266,8 @@ const lightColumns: GridColDef[] = [
   {
     field: "bs25_status",
     headerName: "BS25",
-    width: 160,
+    width: 260,
     sortable: false,
-    renderCell: (params) => <Bs25StatusCell row={params.row} />,
   },
   {
     field: "fuzzy_lookup_status",
@@ -207,6 +292,7 @@ const emptyConfig: CodexConfig = {
   fuzzy_lookup_actions_available: false,
   ai_lookup_actions_available: false,
   bs25_actions_available: false,
+  bs25ai_actions_available: false,
 };
 
 function toGridColumn(column: CodexColumn): GridColDef {
@@ -220,6 +306,10 @@ function toGridColumn(column: CodexColumn): GridColDef {
         ? column.value_type
         : "string",
   };
+}
+
+function codexRowId(row: Record<string, any>) {
+  return row.id;
 }
 
 async function responseError(response: Response, fallback: string) {
@@ -240,10 +330,25 @@ export default function Codex() {
   const [visibleRows, setVisibleRows] = useState<Record<string, any>[]>([]);
   const [refreshToken, setRefreshToken] = useState(0);
   const [selectionResetToken, setSelectionResetToken] = useState(0);
+  const [bs25AiBusy, setBs25AiBusy] = useState(false);
   const [bs25Busy, setBs25Busy] = useState(false);
+  const [selectAllBusy, setSelectAllBusy] = useState(false);
+  const [externalSelection, setExternalSelection] = useState<{
+    token: number;
+    rows: Record<string, any>[];
+  } | undefined>();
+  const [currentQuery, setCurrentQuery] = useState<ServerGridFetchParams>({
+    page: 0,
+    pageSize: 100,
+    search: "",
+    filters: {},
+  });
   const [pendingSelections, setPendingSelections] = useState<
     Record<string, PendingBs25Selection>
   >(loadPendingBs25Selections);
+  const [bs25Drafts, setBs25Drafts] = useState<Record<string, Bs25Draft>>(
+    loadBs25Drafts
+  );
   const activeSelectionRequests = useRef<Set<string>>(new Set());
   const [actionError, setActionError] = useState("");
   const [actionMessage, setActionMessage] = useState("");
@@ -258,6 +363,10 @@ export default function Codex() {
   useEffect(() => {
     persistPendingBs25Selections(pendingSelections);
   }, [pendingSelections]);
+
+  useEffect(() => {
+    persistBs25Drafts(bs25Drafts);
+  }, [bs25Drafts]);
 
   useEffect(() => {
     let active = true;
@@ -307,6 +416,7 @@ export default function Codex() {
     setCompanies([]);
     setSelectedCompany(null);
     setSelectedRows([]);
+    setExternalSelection(undefined);
     setExtraColumns([]);
     setDetailRow(null);
     setDetailError("");
@@ -384,7 +494,8 @@ export default function Codex() {
             environment: pending.environment,
             company: pending.company,
             item_code: pending.itemCode,
-            proposal_rank: pending.rank,
+            proposal_rank: pending.kind === "proposal" ? pending.rank : null,
+            clear: pending.kind === "clear",
             selection_request_id: pending.requestId,
           }),
         });
@@ -402,6 +513,15 @@ export default function Codex() {
             const next = { ...current };
             delete next[rowKey];
             persistPendingBs25Selections(next);
+            return next;
+          });
+          setBs25Drafts((current) => {
+            if (!current[rowKey]) {
+              return current;
+            }
+            const next = { ...current };
+            delete next[rowKey];
+            persistBs25Drafts(next);
             return next;
           });
           setActionMessage(`Scelta BS25 salvata per ${pending.companyItemCode}`);
@@ -452,6 +572,23 @@ export default function Codex() {
     return () => window.clearInterval(interval);
   }, [pendingSelections, sendPendingSelection]);
 
+  const updateDraft = useCallback(
+    (row: Record<string, any>, draft: Bs25Draft) => {
+      if (!selectedCompany) {
+        return;
+      }
+      const rowKey = bs25SelectionKey(
+        environment,
+        selectedCompany.value,
+        row.item_code
+      );
+      setBs25Drafts((current) => ({ ...current, [rowKey]: draft }));
+      setActionError("");
+      setActionMessage("");
+    },
+    [environment, selectedCompany]
+  );
+
   const handleProposalSelect = useCallback(
     (row: Record<string, any>, proposalRank: number) => {
       if (!selectedCompany) {
@@ -464,29 +601,98 @@ export default function Codex() {
       );
       if (
         pendingSelections[rowKey] ||
-        Number(row.bs25_selected_proposal_rank) === proposalRank
+        bs25Drafts[rowKey]?.rank === proposalRank
       ) {
         return;
       }
+      updateDraft(row, {
+        kind: "proposal",
+        rank: proposalRank,
+        updatedAt: Date.now(),
+      });
+    },
+    [
+      bs25Drafts,
+      environment,
+      pendingSelections,
+      selectedCompany,
+      updateDraft,
+    ]
+  );
 
+  const handleDraftClear = useCallback(
+    (row: Record<string, any>) => {
+      updateDraft(row, { kind: "clear", updatedAt: Date.now() });
+    },
+    [updateDraft]
+  );
+
+  const handleDraftSave = useCallback(
+    (row: Record<string, any>) => {
+      if (!selectedCompany) {
+        return;
+      }
+      const rowKey = bs25SelectionKey(
+        environment,
+        selectedCompany.value,
+        row.item_code
+      );
+      const draft = bs25Drafts[rowKey];
+      if (!draft || pendingSelections[rowKey]) {
+        return;
+      }
       const pending: PendingBs25Selection = {
         environment,
         company: selectedCompany.value,
         itemCode: String(row.item_code),
         companyItemCode: String(row.company_item_code),
-        rank: proposalRank,
+        kind: draft.kind,
+        rank: draft.rank,
         startedAt: Date.now(),
         requestId: createSelectionRequestId(),
       };
-      persistPendingBs25Selections({
-        ...pendingSelections,
-        [rowKey]: pending,
-      });
       setPendingSelections((current) => ({ ...current, [rowKey]: pending }));
       setActionError("");
       setActionMessage("");
     },
-    [environment, pendingSelections, selectedCompany]
+    [bs25Drafts, environment, pendingSelections, selectedCompany]
+  );
+
+  const handleBs25AiRowAction = useCallback(
+    async (row: Record<string, any>, action: "escalate" | "decline" | "retry") => {
+      if (!selectedCompany) {
+        return;
+      }
+      setActionError("");
+      setActionMessage("");
+      try {
+        const response = await fetch(`${backendBaseUrl}/api/codex/bs25ai/${action}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            environment,
+            company: selectedCompany.value,
+            item_code: row.item_code,
+          }),
+        });
+        if (!response.ok) {
+          throw new Error(
+            await responseError(response, "Impossibile aggiornare l'analisi BS25AI")
+          );
+        }
+        setActionMessage(
+          action === "escalate"
+            ? `Analisi Sol xhigh avviata per ${row.company_item_code}`
+            : action === "retry"
+              ? `Retry BS25AI avviato per ${row.company_item_code}`
+              : `${row.company_item_code} assegnato alla revisione umana`
+        );
+        setRefreshToken((current) => current + 1);
+      } catch (error: any) {
+        setActionError(error.message || "Errore azione BS25AI");
+      }
+    },
+    [environment, selectedCompany]
   );
 
   const columns = useMemo(() => {
@@ -507,6 +713,15 @@ export default function Codex() {
               )
             ]
           : undefined;
+        const draft = selectedCompany
+          ? bs25Drafts[
+              bs25SelectionKey(
+                environment,
+                selectedCompany.value,
+                params.row.item_code
+              )
+            ]
+          : undefined;
         const serverSaving = params.row.bs25_selection_status === "saving";
         return (
           <ProposalCell
@@ -515,7 +730,9 @@ export default function Codex() {
             rank={rank}
             saving={Boolean(pending) || serverSaving}
             optimisticRank={
-              pending?.rank ??
+              draft?.kind === "proposal"
+                ? draft.rank
+                : pending?.rank ??
               (serverSaving
                 ? Number(params.row.bs25_pending_proposal_rank)
                 : undefined)
@@ -539,13 +756,41 @@ export default function Codex() {
               )
             ]
           : undefined;
+        const draft = selectedCompany
+          ? bs25Drafts[
+              bs25SelectionKey(
+                environment,
+                selectedCompany.value,
+                params.row.item_code
+              )
+            ]
+          : undefined;
         return (
           <Bs25StatusCell
             row={params.row}
-            optimisticRank={pending?.rank}
+            draft={draft}
+            pending={pending}
+            onClear={handleDraftClear}
+            onSave={handleDraftSave}
           />
         );
       },
+    };
+    const aiBs25Column: GridColDef = {
+      field: "aibs25_status",
+      headerName: "AIBS25",
+      width: 390,
+      minWidth: 340,
+      sortable: false,
+      filterable: false,
+      renderCell: (params) => (
+        <AiBs25Cell
+          row={params.row}
+          onEscalate={(row) => void handleBs25AiRowAction(row, "escalate")}
+          onDecline={(row) => void handleBs25AiRowAction(row, "decline")}
+          onRetry={(row) => void handleBs25AiRowAction(row, "retry")}
+        />
+      ),
     };
     const futureLookupColumns = lightColumns.slice(3);
     if (view === "light") {
@@ -553,6 +798,7 @@ export default function Codex() {
         ...leadingColumns,
         bs25StatusColumn,
         ...proposalColumns,
+        aiBs25Column,
         ...futureLookupColumns,
       ];
     }
@@ -562,12 +808,17 @@ export default function Codex() {
       ...extraColumns.slice(0, MAX_EXTRA_COLUMNS).map(toGridColumn),
       bs25StatusColumn,
       ...proposalColumns,
+      aiBs25Column,
       ...futureLookupColumns,
     ];
   }, [
     environment,
     extraColumns,
+    bs25Drafts,
+    handleDraftClear,
+    handleDraftSave,
     handleProposalSelect,
+    handleBs25AiRowAction,
     pendingSelections,
     selectedCompany,
     view,
@@ -581,6 +832,7 @@ export default function Codex() {
           (field) =>
             field !== "fuzzy_lookup_status" &&
             field !== "ai_lookup_status" &&
+            field !== "aibs25_status" &&
             field !== "bs25_status" &&
             !field.startsWith("bs25_proposal_")
         ),
@@ -638,15 +890,56 @@ export default function Codex() {
   const handleSelectionChange = useCallback(
     (ids: Set<string | number>, rows: any[]) => {
       setSelectedRows(
-        rows.filter((row) => ids.has(row.id) && !row.bs25_status)
+        rows.filter(
+          (row) =>
+            ids.has(row.id) &&
+            (rowHasUnsavedBs25(row) || rowNeedsBs25(row))
+        )
       );
     },
     []
   );
 
-  const handleRowsChange = useCallback((rows: any[]) => {
-    setVisibleRows(rows);
-  }, []);
+  const handleRowsChange = useCallback(
+    (rows: any[]) => {
+      setVisibleRows(rows);
+      if (!selectedCompany) {
+        return;
+      }
+      setBs25Drafts((current) => {
+        const next = { ...current };
+        let changed = false;
+        rows.forEach((row) => {
+          const rowKey = bs25SelectionKey(
+            environment,
+            selectedCompany.value,
+            row.item_code
+          );
+          const hasPersistedDecision = Boolean(row.bs25_selection_status);
+          const aiResult = row.aibs25_result as Bs25AiResult | undefined;
+          if (
+            !next[rowKey] &&
+            !pendingSelections[rowKey] &&
+            !hasPersistedDecision &&
+            row.aibs25_status === "completed" &&
+            aiResult?.decision === "match" &&
+            aiResult.proposed_master_code
+          ) {
+            if (aiResult.selected_candidate_rank) {
+              next[rowKey] = {
+                kind: "proposal",
+                rank: aiResult.selected_candidate_rank,
+                updatedAt: Date.now(),
+              };
+              changed = true;
+            }
+          }
+        });
+        return changed ? next : current;
+      });
+    },
+    [environment, pendingSelections, selectedCompany]
+  );
 
   useEffect(() => {
     const hasVisiblePendingSelection =
@@ -667,6 +960,7 @@ export default function Codex() {
       visibleRows.some(
         (row) =>
           ["queued", "analyzing"].includes(row.bs25_status) ||
+          ["queued", "analyzing"].includes(row.aibs25_status) ||
           row.bs25_selection_status === "saving"
       );
     if (!hasActiveOperation) {
@@ -696,15 +990,26 @@ export default function Codex() {
       if (!row) {
         return;
       }
+      const serverMatchesPending =
+        (pending.kind === "proposal" &&
+          row.bs25_selected_source === "bs25" &&
+          Number(row.bs25_selected_proposal_rank) === pending.rank);
       const completedWithRequestId =
+        pending.kind === "proposal" &&
         row.bs25_selection_request_id === pending.requestId &&
         row.bs25_selection_status === "completed" &&
-        Number(row.bs25_selected_proposal_rank) === pending.rank;
+        serverMatchesPending;
+      const completedClear =
+        pending.kind === "clear" &&
+        !row.bs25_selection_status &&
+        !row.bs25_selected_source &&
+        !row.bs25_selected_master_code;
       const completedByLegacyBackend =
+        pending.kind === "proposal" &&
         !row.bs25_selection_request_id &&
         row.bs25_selection_status !== "saving" &&
         Number(row.bs25_selected_proposal_rank) === pending.rank;
-      if (completedWithRequestId || completedByLegacyBackend) {
+      if (completedWithRequestId || completedClear || completedByLegacyBackend) {
         completed.push(rowKey);
       }
     });
@@ -718,6 +1023,11 @@ export default function Codex() {
       persistPendingBs25Selections(next);
       return next;
     });
+    setBs25Drafts((current) => {
+      const next = { ...current };
+      completed.forEach((rowKey) => delete next[rowKey]);
+      return next;
+    });
     setActionMessage(
       `${completed.length} ${
         completed.length === 1
@@ -727,8 +1037,17 @@ export default function Codex() {
     );
   }, [environment, pendingSelections, selectedCompany, visibleRows]);
 
-  const handleBs25Lookup = useCallback(async () => {
-    if (!selectedCompany || selectedRows.length === 0) {
+  const bs25SelectedRows = useMemo(
+    () => selectedRows.filter(rowNeedsBs25),
+    [selectedRows]
+  );
+  const bs25AiSelectedRows = useMemo(
+    () => selectedRows.filter(rowHasUnsavedBs25),
+    [selectedRows]
+  );
+
+  const handleBs25 = useCallback(async () => {
+    if (!selectedCompany || bs25SelectedRows.length === 0) {
       return;
     }
     setBs25Busy(true);
@@ -741,31 +1060,101 @@ export default function Codex() {
         body: JSON.stringify({
           environment,
           company: selectedCompany.value,
-          item_codes: selectedRows.map((row) => row.item_code),
+          item_codes: bs25SelectedRows.map((row) => row.item_code),
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(await responseError(response, "Impossibile avviare BS25 locale"));
+      }
+      const result = await response.json();
+      const accepted = result.accepted_item_codes?.length || 0;
+      setActionMessage(`${accepted} record inviati al BS25 locale`);
+      setSelectedRows([]);
+      setExternalSelection(undefined);
+      setSelectionResetToken((current) => current + 1);
+      setRefreshToken((current) => current + 1);
+    } catch (error: any) {
+      setActionError(error.message || "Errore avvio BS25 locale");
+    } finally {
+      setBs25Busy(false);
+    }
+  }, [bs25SelectedRows, environment, selectedCompany]);
+
+  const handleBs25Ai = useCallback(async () => {
+    if (!selectedCompany || bs25AiSelectedRows.length === 0) {
+      return;
+    }
+    setBs25AiBusy(true);
+    setActionError("");
+    setActionMessage("");
+    try {
+      const response = await fetch(`${backendBaseUrl}/api/codex/bs25ai`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          environment,
+          company: selectedCompany.value,
+          item_codes: bs25AiSelectedRows.map((row) => row.item_code),
         }),
       });
       if (!response.ok) {
         throw new Error(
-          await responseError(response, "Impossibile avviare BS25")
+          await responseError(response, "Impossibile avviare BS25AI")
         );
       }
       const result = await response.json();
       const accepted = result.accepted_item_codes?.length || 0;
       const locked = result.locked_item_codes?.length || 0;
       setActionMessage(
-        `${accepted} record inviati in analisi${
+        `${accepted} record inviati a BS25AI${
           locked ? `; ${locked} erano gia bloccati` : ""
         }`
       );
       setSelectedRows([]);
+      setExternalSelection(undefined);
       setSelectionResetToken((current) => current + 1);
       setRefreshToken((current) => current + 1);
     } catch (error: any) {
-      setActionError(error.message || "Errore avvio BS25");
+      setActionError(error.message || "Errore avvio BS25AI");
     } finally {
-      setBs25Busy(false);
+      setBs25AiBusy(false);
     }
-  }, [environment, selectedCompany, selectedRows]);
+  }, [bs25AiSelectedRows, environment, selectedCompany]);
+
+  const handleSelectAllBs25 = useCallback(async () => {
+    if (!selectedCompany) {
+      return;
+    }
+    setSelectAllBusy(true);
+    setActionError("");
+    try {
+      const response = await fetch(`${backendBaseUrl}/api/codex/bs25ai/eligible`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          environment,
+          company: selectedCompany.value,
+          view,
+          search: currentQuery.search,
+          filters: currentQuery.filters,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(
+          await responseError(response, "Impossibile selezionare i risultati BS25")
+        );
+      }
+      const data = await response.json();
+      const rows = Array.isArray(data.rows) ? data.rows : [];
+      setSelectedRows(rows);
+      setExternalSelection({ token: Date.now(), rows });
+      setActionMessage(`${rows.length} risultati BS25 selezionati`);
+    } catch (error: any) {
+      setActionError(error.message || "Errore selezione risultati BS25");
+    } finally {
+      setSelectAllBusy(false);
+    }
+  }, [currentQuery.filters, currentQuery.search, environment, selectedCompany, view]);
 
   const handleRowClick = useCallback(
     async (params: GridRowParams) => {
@@ -811,6 +1200,7 @@ export default function Codex() {
     }
     setView(nextView);
     setSelectedRows([]);
+    setExternalSelection(undefined);
     setDetailRow(null);
     setDetailError("");
     if (nextView === "light") {
@@ -818,12 +1208,22 @@ export default function Codex() {
     }
   };
 
-  const bs25Available = config.bs25_actions_available ?? false;
-  const bs25Disabled = !bs25Available || selectedRows.length === 0 || bs25Busy;
+  const bs25AiAvailable = config.bs25ai_actions_available ?? false;
+  const bs25AiDisabled =
+    !bs25AiAvailable || bs25AiSelectedRows.length === 0 || bs25AiBusy;
+  const bs25AiTooltip = !bs25AiAvailable
+    ? "BS25AI non configurato"
+    : bs25AiSelectedRows.length === 0
+      ? "Seleziona almeno un record con BS25 completato e scelta non salvata"
+      : "";
+  const bs25Available =
+    (config.bs25_actions_available ?? false) &&
+    (config.pdb_available?.[environment] ?? true);
+  const bs25Disabled = !bs25Available || bs25SelectedRows.length === 0 || bs25Busy;
   const bs25Tooltip = !bs25Available
-    ? "BS25 non ancora configurato"
-    : selectedRows.length === 0
-      ? "Seleziona almeno un record"
+    ? "Snapshot PDB locale non disponibile"
+    : bs25SelectedRows.length === 0
+      ? "Seleziona almeno un record senza proposte BS25"
       : "";
   const fuzzyLookupAvailable = config.fuzzy_lookup_actions_available ?? false;
   const aiLookupAvailable =
@@ -857,6 +1257,7 @@ export default function Codex() {
         onChange={(_, company) => {
           setSelectedCompany(company);
           setSelectedRows([]);
+          setExternalSelection(undefined);
           setExtraColumns([]);
           setDetailRow(null);
           setDetailError("");
@@ -912,14 +1313,50 @@ export default function Codex() {
       <Tooltip title={bs25Tooltip} disableHoverListener={!bs25Tooltip}>
         <span>
           <Button
-            variant="contained"
+            variant="outlined"
             startIcon={
-              bs25Busy ? <CircularProgress size={16} color="inherit" /> : <ScanSearch size={17} />
+              bs25Busy ? (
+                <CircularProgress size={16} />
+              ) : (
+                <ScanSearch size={17} />
+              )
             }
             disabled={bs25Disabled}
-            onClick={handleBs25Lookup}
+            onClick={handleBs25}
           >
-            {bs25Busy ? "Invio..." : `BS25${selectedRows.length ? ` (${selectedRows.length})` : ""}`}
+            {bs25Busy
+              ? "Elaborazione..."
+              : `BS25${bs25SelectedRows.length ? ` (${bs25SelectedRows.length})` : ""}`}
+          </Button>
+        </span>
+      </Tooltip>
+      <Button
+        variant="outlined"
+        startIcon={
+          selectAllBusy ? <CircularProgress size={16} /> : <CheckSquare size={17} />
+        }
+        disabled={!selectedCompany || selectAllBusy || !bs25AiAvailable}
+        onClick={handleSelectAllBs25}
+      >
+        {selectAllBusy ? "Selezione..." : "Seleziona tutti BS25"}
+      </Button>
+      <Tooltip title={bs25AiTooltip} disableHoverListener={!bs25AiTooltip}>
+        <span>
+          <Button
+            variant="contained"
+            startIcon={
+              bs25AiBusy ? (
+                <CircularProgress size={16} color="inherit" />
+              ) : (
+                <Sparkles size={17} />
+              )
+            }
+            disabled={bs25AiDisabled}
+            onClick={handleBs25Ai}
+          >
+            {bs25AiBusy
+              ? "Invio..."
+              : `BS25AI${bs25AiSelectedRows.length ? ` (${bs25AiSelectedRows.length})` : ""}`}
           </Button>
         </span>
       </Tooltip>
@@ -958,6 +1395,11 @@ export default function Codex() {
       {!selectedEnvironment?.available && selectedEnvironment?.message && (
         <Alert severity="warning" sx={{ mb: 1 }}>
           {selectedEnvironment.message}
+        </Alert>
+      )}
+      {config.bs25ai_mock_mode && (
+        <Alert severity="info" sx={{ mb: 1 }}>
+          BS25AI in modalita simulata: lucianavm04 non viene contattata.
         </Alert>
       )}
       {view === "full" &&
@@ -1023,13 +1465,15 @@ export default function Codex() {
           title="CODEX"
           columns={columns}
           fetchRows={fetchRows}
-          getRowId={(row) => row.id}
+          getRowId={codexRowId}
           pageSizeOptions={[25, 50, 100, 250, 500]}
           defaultPageSize={100}
           filterFields={filterFields}
           toolbarLeft={toolbarLeft}
           checkboxSelection
           onSelectionChange={handleSelectionChange}
+          onQueryChange={setCurrentQuery}
+          externalSelection={externalSelection}
           onRowsChange={handleRowsChange}
           onRowClick={handleRowClick}
           rowHeight={34}
@@ -1039,6 +1483,9 @@ export default function Codex() {
           getRowClassName={(params) => {
             const lookupRunning = ["queued", "analyzing"].includes(
               params.row.bs25_status
+            );
+            const aiRunning = ["queued", "analyzing"].includes(
+              params.row.aibs25_status
             );
             const localPending = selectedCompany
               ? pendingSelections[
@@ -1052,9 +1499,13 @@ export default function Codex() {
             const selectionSaving =
               Boolean(localPending) ||
               params.row.bs25_selection_status === "saving";
-            return lookupRunning || selectionSaving ? "codex-row-locked" : "";
+            return lookupRunning || aiRunning || selectionSaving
+              ? "codex-row-locked"
+              : "";
           }}
-          isRowSelectable={(params) => !params.row.bs25_status}
+          isRowSelectable={(params) =>
+            rowHasUnsavedBs25(params.row) || rowNeedsBs25(params.row)
+          }
           refreshToken={refreshToken}
           silentRefresh
           selectionResetToken={selectionResetToken}
@@ -1084,10 +1535,16 @@ export default function Codex() {
 
 function Bs25StatusCell({
   row,
-  optimisticRank,
+  draft,
+  pending,
+  onClear,
+  onSave,
 }: {
   row: Record<string, any>;
-  optimisticRank?: number;
+  draft?: Bs25Draft;
+  pending?: PendingBs25Selection;
+  onClear: (row: Record<string, any>) => void;
+  onSave: (row: Record<string, any>) => void;
 }) {
   const status = row.bs25_status;
   if (!status) {
@@ -1097,19 +1554,28 @@ function Bs25StatusCell({
     return <Chip size="small" color="warning" label="Analyzing" />;
   }
   if (status === "failed") {
-    return <Chip size="small" color="error" label="Errore" />;
+    return (
+      <Stack spacing={0.5} sx={{ width: "100%", py: 0.5 }}>
+        <Chip size="small" color="error" label="Errore" sx={{ alignSelf: "flex-start" }} />
+        {row.bs25_error_message && (
+          <Typography variant="caption" color="error.main">
+            {row.bs25_error_message}
+          </Typography>
+        )}
+      </Stack>
+    );
   }
-  const selectionSaving =
-    optimisticRank !== undefined || row.bs25_selection_status === "saving";
+  const selectionSaving = Boolean(pending) || row.bs25_selection_status === "saving";
   if (selectionSaving) {
-    const pendingRank =
-      optimisticRank ?? Number(row.bs25_pending_proposal_rank);
+    const pendingLabel = pending?.kind === "proposal"
+      ? `proposta ${pending.rank}`
+      : "cancellazione";
     return (
       <Stack spacing={0.75} sx={{ width: "100%", pr: 1 }}>
         <Chip
           size="small"
           color="warning"
-          label={`Salvataggio scelta ${pendingRank || ""}`.trim()}
+          label={`Salvataggio ${pendingLabel || "scelta"}`}
         />
         <LinearProgress color="warning" />
       </Stack>
@@ -1118,23 +1584,176 @@ function Bs25StatusCell({
   if (row.bs25_selection_status === "failed") {
     return <Chip size="small" color="error" label="Salvataggio fallito" />;
   }
-  if (status === "completed" && row.bs25_selected_proposal_rank) {
-    return (
-      <Stack spacing={0.5} alignItems="flex-start">
-        <Chip
+  const selectedLabel = row.bs25_selected_master_code
+    ? `Salvato: ${row.bs25_selected_master_code}`
+    : "Scelta non salvata";
+  const draftLabel = draft?.kind === "proposal"
+    ? `Bozza: proposta ${draft.rank}`
+    : draft?.kind === "clear"
+        ? "Bozza: cancella"
+        : selectedLabel;
+
+  return (
+    <Stack
+      spacing={0.75}
+      sx={{ width: "100%", py: 0.75, pr: 0.75 }}
+      onClick={(event) => event.stopPropagation()}
+    >
+      <Chip
+        size="small"
+        color={draft ? "warning" : row.bs25_selected_master_code ? "success" : "info"}
+        label={draftLabel}
+        sx={{ alignSelf: "flex-start" }}
+      />
+      <Stack direction="row" spacing={0.5}>
+        <Button size="small" variant="text" onClick={() => onClear(row)}>
+          Cancella
+        </Button>
+        <Button
           size="small"
-          color="success"
-          label={`Scelta ${row.bs25_selected_proposal_rank}`}
-        />
-        {row.bs25_selected_master_code && (
-          <Typography variant="caption" fontWeight={700}>
-            {row.bs25_selected_master_code}
+          variant="contained"
+          disabled={!draft}
+          onClick={() => onSave(row)}
+        >
+          Salva
+        </Button>
+      </Stack>
+    </Stack>
+  );
+}
+
+function AiBs25Cell({
+  row,
+  onEscalate,
+  onDecline,
+  onRetry,
+}: {
+  row: Record<string, any>;
+  onEscalate: (row: Record<string, any>) => void;
+  onDecline: (row: Record<string, any>) => void;
+  onRetry: (row: Record<string, any>) => void;
+}) {
+  const status = row.aibs25_status;
+  const stage = row.aibs25_stage;
+  const result = row.aibs25_result as Bs25AiResult | undefined;
+  const components = result?.components
+    ? Object.entries(result.components).filter(([, value]) => Boolean(value))
+    : [];
+  const stageLabel =
+    stage === "bs25_exact"
+      ? "Exact normalizzato"
+      : stage === "sol_xhigh_web"
+        ? "Sol xhigh · web"
+        : stage === "sol_low"
+          ? "Sol low"
+          : "BS25AI";
+
+  if (!status) {
+    return <Typography variant="body2" color="text.secondary">-</Typography>;
+  }
+  if (["queued", "analyzing"].includes(status)) {
+    return (
+      <Stack spacing={0.75} sx={{ width: "100%", py: 1, pr: 1 }}>
+        <Chip size="small" color="warning" label={`${stageLabel}: analyzing`} />
+        <LinearProgress color="warning" />
+        {row.aibs25_flag && (
+          <Typography variant="caption" color="warning.dark">
+            {row.aibs25_flag}
           </Typography>
         )}
       </Stack>
     );
   }
-  return <Chip size="small" color="info" label="Da selezionare" />;
+
+  return (
+    <Stack
+      spacing={0.7}
+      sx={{ width: "100%", py: 1, pr: 1, whiteSpace: "normal" }}
+      onClick={(event) => event.stopPropagation()}
+    >
+      <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+        <Chip
+          size="small"
+          color={status === "failed" ? "error" : status === "needs_human_review" ? "warning" : "success"}
+          label={stageLabel}
+        />
+        {result?.decision && (
+          <Chip size="small" variant="outlined" label={result.decision} />
+        )}
+        {result?.simulated && (
+          <Chip size="small" color="info" variant="outlined" label="SIMULAZIONE" />
+        )}
+      </Stack>
+      {row.aibs25_flag && (
+        <Typography variant="caption" color="warning.dark" fontWeight={700}>
+          {row.aibs25_flag}
+        </Typography>
+      )}
+      {result?.proposed_master_code && (
+        <Typography variant="subtitle2" fontWeight={800}>
+          Proposta: {result.proposed_master_code}
+          {result.selected_candidate_rank
+            ? ` (candidato ${result.selected_candidate_rank})`
+            : " (fuori Top-3)"}
+        </Typography>
+      )}
+      {result?.confidence && (
+        <Typography variant="caption" color="text.secondary">
+          Affidabilita LLM: {result.confidence}
+        </Typography>
+      )}
+      {result?.rationale && (
+        <Typography variant="caption">{result.rationale}</Typography>
+      )}
+      {components.length > 0 && (
+        <Box>
+          {components.map(([key, value]) => (
+            <Typography key={key} variant="caption" display="block" color="text.secondary">
+              {key.replace(/_/g, " ")}: {value}
+            </Typography>
+          ))}
+        </Box>
+      )}
+      {(result?.evidence || []).map((source) => (
+        <Link
+          key={source.url}
+          href={source.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          variant="caption"
+          title={source.basis}
+        >
+          {source.title || source.url}
+        </Link>
+      ))}
+      {status === "failed" && (
+        <>
+          <Typography variant="caption" color="error">
+            {row.aibs25_error_message || "Analisi LLM non riuscita. Nessun codice e stato selezionato."}
+          </Typography>
+          <Button
+            size="small"
+            variant="outlined"
+            color="error"
+            startIcon={<RefreshCw size={14} />}
+            onClick={() => onRetry(row)}
+          >
+            Riprova
+          </Button>
+        </>
+      )}
+      {status === "completed" && stage === "sol_low" && (
+        <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+          <Button size="small" variant="outlined" onClick={() => onEscalate(row)}>
+            Sol xhigh con web
+          </Button>
+          <Button size="small" variant="text" onClick={() => onDecline(row)}>
+            Non scalare
+          </Button>
+        </Stack>
+      )}
+    </Stack>
+  );
 }
 
 function ProposalCell({

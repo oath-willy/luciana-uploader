@@ -1,0 +1,19 @@
+[Unit]
+Description=Luciana BS25AI Codex worker
+After=network-online.target
+
+[Service]
+Type=simple
+User=sole_abate
+Group=sole_abate
+WorkingDirectory=/home/sole_abate/luciana-bs25ai-worker
+EnvironmentFile=/home/sole_abate/luciana-bs25ai-worker/.env
+ExecStart=/home/sole_abate/luciana-bs25ai-worker/.venv/bin/uvicorn app:app --host 0.0.0.0 --port 8094
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+

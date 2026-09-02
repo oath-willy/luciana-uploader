@@ -30,3 +30,9 @@ yarn-debug.log*
 yarn-error.log*
 .local-logs/
 backend.zip
+
+# CODEX local snapshots and durable runtime state
+backend/data/codex/*.sqlite3
+backend/data/codex/*.sqlite3-*
+backend/data/codex/*.tmp
+backend/.local-ui-test*/
