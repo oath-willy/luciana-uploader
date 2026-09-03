@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from api.codex import router
 from services.codex_local_retrieval import publish_pdb_snapshot
-from services.codex_local_store import CodexSnapshotStore, publish_snapshot
+from services.codex_local_store import CodexSnapshotStore, publish_snapshot, snapshot_path
 
 
 class CodexLocalApiTests(unittest.TestCase):
@@ -21,6 +21,7 @@ class CodexLocalApiTests(unittest.TestCase):
             {
                 "CODEX_LOCAL_DATA_DIR": str(data_dir),
                 "CODEX_RUNTIME_DB": str(data_dir / "runtime.sqlite3"),
+                "CODEX_SNAPSHOT_TOKEN": "snapshot-test-token",
                 "BS25AI_MOCK_MODE": "true",
             },
         )
@@ -137,6 +138,27 @@ class CodexLocalApiTests(unittest.TestCase):
         self.assertEqual(before.json()["total"], 1)
         self.assertTrue(cleared.json()["selected"])
         self.assertEqual(after.json()["total"], 2)
+
+    def test_prebuilt_snapshot_upload_is_authenticated_and_validated(self):
+        snapshot_bytes = snapshot_path("dev").read_bytes()
+        unauthorized = self.client.put(
+            "/api/codex/snapshot-file?environment=dev",
+            content=snapshot_bytes,
+            headers={"Content-Type": "application/octet-stream"},
+        )
+        published = self.client.put(
+            "/api/codex/snapshot-file?environment=dev",
+            content=snapshot_bytes,
+            headers={
+                "Content-Type": "application/octet-stream",
+                "X-Codex-Snapshot-Token": "snapshot-test-token",
+            },
+        )
+
+        self.assertEqual(unauthorized.status_code, 401)
+        self.assertEqual(published.status_code, 200)
+        self.assertEqual(published.json()["rows"], 3)
+        self.assertEqual(published.json()["master_codes"], 1)
 
     def test_submit_ai_and_local_selection_contract(self):
         selection = self.client.post(

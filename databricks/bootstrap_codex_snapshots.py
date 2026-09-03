@@ -257,33 +257,40 @@ def _snapshot_payload(
     }
 
 
-def _publish_remote(backend_url: str, token: str, payload: dict[str, Any], pdb_path: Path) -> None:
+def _publish_remote_files(
+    backend_url: str,
+    token: str,
+    environment: str,
+    snapshot_path: Path,
+    pdb_path: Path,
+) -> dict[str, Any]:
     headers = {"X-Codex-Snapshot-Token": token}
-    response = requests.put(
-        f"{backend_url.rstrip('/')}/api/codex/snapshot",
-        headers=headers,
-        json=payload,
-        timeout=900,
-    )
+    with snapshot_path.open("rb") as handle:
+        response = requests.put(
+            f"{backend_url.rstrip('/')}/api/codex/snapshot-file",
+            params={"environment": environment},
+            headers={**headers, "Content-Type": "application/octet-stream"},
+            data=handle,
+            timeout=900,
+        )
     response.raise_for_status()
-    receipt = response.json()
-    if receipt.get("rows") != len(payload["rows"]):
-        raise RuntimeError(f"Conteggio snapshot remoto non coerente: {receipt}")
+    snapshot_receipt = response.json()
 
     with pdb_path.open("rb") as handle:
         response = requests.put(
             f"{backend_url.rstrip('/')}/api/codex/pdb-snapshot",
-            params={"environment": payload["environment"]},
+            params={"environment": environment},
             headers={**headers, "Content-Type": "application/octet-stream"},
             data=handle,
             timeout=3600,
         )
     response.raise_for_status()
+    return {"snapshot": snapshot_receipt, "pdb": response.json()}
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--warehouse-id", required=True)
+    parser.add_argument("--warehouse-id")
     parser.add_argument("--profile", default="DEFAULT")
     parser.add_argument("--catalog", default="research_dev")
     parser.add_argument("--schema", default="silver")
@@ -291,12 +298,35 @@ def main() -> None:
     parser.add_argument("--target-dir", type=Path, default=REPOSITORY_ROOT / "backend" / "data" / "codex")
     parser.add_argument("--backend-url")
     parser.add_argument("--snapshot-token-file", type=Path)
+    parser.add_argument(
+        "--publish-only",
+        action="store_true",
+        help="Pubblica i due SQLite correnti senza interrogare nuovamente Databricks",
+    )
     args = parser.parse_args()
     if bool(args.backend_url) != bool(args.snapshot_token_file):
         parser.error("--backend-url e --snapshot-token-file devono essere specificati insieme")
 
     target_dir = args.target_dir.resolve()
     target_dir.mkdir(parents=True, exist_ok=True)
+    if args.publish_only:
+        if not args.backend_url:
+            parser.error("--publish-only richiede --backend-url e --snapshot-token-file")
+        snapshot_path = target_dir / f"snapshot-{args.environment}.sqlite3"
+        pdb_path = target_dir / f"pdb-{args.environment}.sqlite3"
+        if not snapshot_path.is_file() or not pdb_path.is_file():
+            raise FileNotFoundError("I due snapshot SQLite correnti non sono disponibili")
+        token = args.snapshot_token_file.read_text(encoding="utf-8").strip()
+        if not token:
+            raise RuntimeError("Token snapshot vuoto")
+        receipts = _publish_remote_files(
+            args.backend_url, token, args.environment, snapshot_path, pdb_path
+        )
+        print(json.dumps({"remote": receipts}, ensure_ascii=False))
+        return
+    if not args.warehouse_id:
+        parser.error("--warehouse-id e obbligatorio salvo con --publish-only")
+
     previous_data_dir = os.environ.get("CODEX_LOCAL_DATA_DIR")
     os.environ["CODEX_LOCAL_DATA_DIR"] = str(target_dir)
     created_at = datetime.now(timezone.utc).isoformat()
@@ -319,17 +349,24 @@ def main() -> None:
             client.rows(PDB_SQL),
         )
         pdb_path = Path(pdb_receipt["path"])
+        remote_receipts = None
         if args.backend_url:
             token = args.snapshot_token_file.read_text(encoding="utf-8").strip()
             if not token:
                 raise RuntimeError("Token snapshot vuoto")
-            _publish_remote(args.backend_url, token, payload, pdb_path)
+            remote_receipts = _publish_remote_files(
+                args.backend_url,
+                token,
+                args.environment,
+                Path(codex_receipt["path"]),
+                pdb_path,
+            )
         print(
             json.dumps(
                 {
                     "snapshot": codex_receipt,
                     "pdb": pdb_receipt,
-                    "remote_published": bool(args.backend_url),
+                    "remote": remote_receipts,
                 },
                 ensure_ascii=False,
             )

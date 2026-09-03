@@ -11,6 +11,10 @@ Databricks deve pubblicare un payload completo con `PUT /api/codex/snapshot` e h
 ignorati da Git. Il payload contiene `environment`, `snapshot_id`, `created_at`, `companies`,
 `rows` e la reference canonica `master_codes`.
 
+Il bootstrap o disaster recovery puo inviare un SQLite gia costruito a
+`PUT /api/codex/snapshot-file?environment=dev`. Il backend applica le stesse garanzie del PDB:
+token dedicato, validazione di schema e contenuto, `quick_check` e sostituzione atomica.
+
 Il Job `databricks/publish_codex_snapshot.py`, eseguito da un checkout Git del repository,
 pubblica nello stesso run anche `pdb-{environment}.sqlite3`. Riusa direttamente il builder
 BS25 del backend, invia il file in streaming e confronta i conteggi prima di terminare. Il widget

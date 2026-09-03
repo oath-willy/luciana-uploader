@@ -825,6 +825,71 @@ def publish_snapshot(
     }
 
 
+def validate_and_publish_snapshot_file(
+    environment: CodexEnvironmentName, staged_path: Path
+) -> dict[str, Any]:
+    """Validate a prebuilt CODEX SQLite snapshot and atomically make it current."""
+
+    connection = sqlite3.connect(f"file:{staged_path.as_posix()}?mode=ro", uri=True)
+    try:
+        tables = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type IN ('table','view')"
+            )
+        }
+        if not {"metadata", "companies", "items", "master_codes"}.issubset(tables):
+            raise SnapshotValidationError("File snapshot CODEX con schema non valido")
+        item_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(items)")
+        }
+        required_item_columns = {
+            "environment",
+            "company",
+            "item_code",
+            "proposal_1_json",
+            "proposal_2_json",
+            "proposal_3_json",
+            "selected_proposal_rank",
+            "selected_master_code",
+            "selection_status",
+        }
+        if not required_item_columns.issubset(item_columns):
+            raise SnapshotValidationError("Versione schema snapshot CODEX non supportata")
+        check = connection.execute("PRAGMA quick_check").fetchone()[0]
+        if check != "ok":
+            raise SnapshotValidationError(f"SQLite quick_check CODEX fallito: {check}")
+        metadata = dict(connection.execute("SELECT key,value FROM metadata"))
+        if metadata.get("environment") != environment:
+            raise SnapshotValidationError("Environment del file snapshot CODEX non coerente")
+        row_count = int(connection.execute("SELECT COUNT(*) FROM items").fetchone()[0])
+        company_count = int(connection.execute("SELECT COUNT(*) FROM companies").fetchone()[0])
+        master_code_count = int(
+            connection.execute("SELECT COUNT(*) FROM master_codes").fetchone()[0]
+        )
+        mismatched = int(
+            connection.execute(
+                "SELECT COUNT(*) FROM items WHERE environment <> ?", (environment,)
+            ).fetchone()[0]
+        )
+        if row_count <= 0 or company_count <= 0 or master_code_count <= 0 or mismatched:
+            raise SnapshotValidationError("Contenuto snapshot CODEX non coerente")
+    finally:
+        connection.close()
+
+    target = snapshot_path(environment)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    os.replace(staged_path, target)
+    return {
+        "environment": environment,
+        "snapshot_id": metadata.get("snapshot_id"),
+        "rows": row_count,
+        "companies": company_count,
+        "master_codes": master_code_count,
+        "path": str(target),
+    }
+
+
 def _has_three_bs25_proposals(row: dict[str, Any]) -> bool:
     return row.get("bs25_status") == "completed" and all(
         isinstance(row.get(f"bs25_proposal_{rank}"), dict) for rank in (1, 2, 3)

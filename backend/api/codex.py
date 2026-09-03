@@ -30,6 +30,7 @@ from services.codex_local_store import (
     codex_data_dir,
     environment_descriptors,
     publish_snapshot,
+    validate_and_publish_snapshot_file,
 )
 from services.codex_selection import resolve_codex_selection
 
@@ -439,6 +440,40 @@ async def ingest_pdb_snapshot(
             async for chunk in request.stream():
                 handle.write(chunk)
         return validate_and_publish_pdb_file(environment, staged)
+    except SnapshotValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        staged.unlink(missing_ok=True)
+
+
+@router.put("/codex/snapshot-file")
+async def ingest_codex_snapshot_file(
+    request: Request,
+    environment: CodexEnvironmentName = Query(default="dev"),
+    x_codex_snapshot_token: str | None = Header(default=None),
+):
+    """Accept a prebuilt SQLite snapshot for bootstrap and disaster recovery."""
+
+    expected = os.getenv("CODEX_SNAPSHOT_TOKEN", "").strip()
+    if not expected:
+        raise HTTPException(status_code=503, detail="Ingest snapshot CODEX non configurato")
+    if not x_codex_snapshot_token or not secrets.compare_digest(
+        x_codex_snapshot_token, expected
+    ):
+        raise HTTPException(status_code=401, detail="Token snapshot CODEX non valido")
+
+    data_dir = codex_data_dir()
+    data_dir.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".snapshot-{environment}-upload-", suffix=".sqlite3", dir=data_dir
+    )
+    os.close(descriptor)
+    staged = Path(temporary_name)
+    try:
+        with staged.open("wb") as handle:
+            async for chunk in request.stream():
+                handle.write(chunk)
+        return validate_and_publish_snapshot_file(environment, staged)
     except SnapshotValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     finally:
