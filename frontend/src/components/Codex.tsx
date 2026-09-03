@@ -25,6 +25,8 @@ import {
 } from "@mui/material";
 import {
   CheckSquare,
+  ChevronDown,
+  ChevronUp,
   ChevronsDown,
   ChevronsUp,
   RefreshCw,
@@ -140,9 +142,9 @@ const MAX_EXTRA_COLUMNS = 12;
 const BS25_SELECTION_OUTBOX_KEY = "codex.bs25.selection-outbox.v1";
 const BS25_DRAFTS_KEY = "codex.bs25.drafts.v1";
 const CODEX_FROZEN_COLUMNS = [
-  { field: "__check__", width: 54 },
-  { field: "company_item_code", width: 220 },
-  { field: "description", width: 360 },
+  { field: "__check__" },
+  { field: "company_item_code" },
+  { field: "description" },
 ];
 
 function bs25SelectionKey(
@@ -358,6 +360,9 @@ export default function Codex() {
   const [bs25Busy, setBs25Busy] = useState(false);
   const [selectAllBusy, setSelectAllBusy] = useState(false);
   const [compactRows, setCompactRows] = useState(true);
+  const [expandedCompactRows, setExpandedCompactRows] = useState<
+    Set<string | number>
+  >(new Set());
   const [externalSelection, setExternalSelection] = useState<{
     token: number;
     rows: Record<string, any>[];
@@ -392,6 +397,10 @@ export default function Codex() {
   useEffect(() => {
     persistBs25Drafts(bs25Drafts);
   }, [bs25Drafts]);
+
+  useEffect(() => {
+    setExpandedCompactRows(new Set());
+  }, [environment, selectedCompany?.value, view]);
 
   useEffect(() => {
     let active = true;
@@ -1545,6 +1554,7 @@ export default function Codex() {
                 aria-pressed={compactRows}
                 onClick={(event) => {
                   event.stopPropagation();
+                  setExpandedCompactRows(new Set());
                   setCompactRows((current) => !current);
                 }}
                 sx={{ width: 24, height: 24 }}
@@ -1553,6 +1563,45 @@ export default function Codex() {
               </IconButton>
             </Tooltip>
           }
+          selectionCellAction={(params) => {
+            const rowExpanded = expandedCompactRows.has(params.id);
+            const label = !compactRows
+              ? "Riga già espansa"
+              : rowExpanded
+                ? "Compatta questo record"
+                : "Espandi questo record";
+            return (
+              <Tooltip title={label}>
+                <span>
+                  <IconButton
+                    size="small"
+                    disabled={!compactRows}
+                    aria-label={label}
+                    aria-pressed={compactRows ? rowExpanded : true}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setExpandedCompactRows((current) => {
+                        const next = new Set(current);
+                        if (next.has(params.id)) {
+                          next.delete(params.id);
+                        } else {
+                          next.add(params.id);
+                        }
+                        return next;
+                      });
+                    }}
+                    sx={{ width: 24, height: 24 }}
+                  >
+                    {rowExpanded || !compactRows ? (
+                      <ChevronUp size={15} />
+                    ) : (
+                      <ChevronDown size={15} />
+                    )}
+                  </IconButton>
+                </span>
+              </Tooltip>
+            );
+          }}
           onSelectionChange={handleSelectionChange}
           onQueryChange={setCurrentQuery}
           externalSelection={externalSelection}
@@ -1560,7 +1609,7 @@ export default function Codex() {
           onRowClick={handleRowClick}
           rowHeight={34}
           getRowHeight={(params) =>
-            compactRows
+            compactRows && !expandedCompactRows.has(params.id)
               ? 44
               : params.model.bs25_status === "completed"
                 ? "auto"
@@ -1590,7 +1639,9 @@ export default function Codex() {
               lookupRunning || aiRunning || selectionSaving
                 ? "codex-row-locked"
                 : "",
-              compactRows ? "codex-row-compact" : "",
+              compactRows && !expandedCompactRows.has(params.id)
+                ? "codex-row-compact"
+                : "",
             ]
               .filter(Boolean)
               .join(" ");
