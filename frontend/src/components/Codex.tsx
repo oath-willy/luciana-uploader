@@ -1362,16 +1362,29 @@ export default function Codex() {
             </Button>
           </span>
         </Tooltip>
-        <Button
-          variant="outlined"
-          startIcon={
-            selectAllBusy ? <CircularProgress size={16} /> : <CheckSquare size={17} />
-          }
-          disabled={!selectedCompany || selectAllBusy || !bs25AiAvailable}
-          onClick={handleSelectAllBs25}
-        >
-          {selectAllBusy ? "Selezione..." : "ALL BS25"}
-        </Button>
+        <Tooltip title="Seleziona tutti i BS25 con scelta non salvata">
+          <span>
+            <IconButton
+              aria-label="Seleziona tutti i BS25 con scelta non salvata"
+              disabled={!selectedCompany || selectAllBusy || !bs25AiAvailable}
+              onClick={handleSelectAllBs25}
+              size="small"
+              sx={{
+                width: 36,
+                height: 36,
+                border: "1px solid",
+                borderColor: "divider",
+                borderRadius: 1,
+              }}
+            >
+              {selectAllBusy ? (
+                <CircularProgress size={16} />
+              ) : (
+                <CheckSquare size={17} />
+              )}
+            </IconButton>
+          </span>
+        </Tooltip>
         <Tooltip title={bs25AiTooltip} disableHoverListener={!bs25AiTooltip}>
           <span>
             <Button

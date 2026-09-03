@@ -462,6 +462,9 @@ export default function ServerDataGrid({
               maxHeight: "100%",
               overflow: "hidden",
             },
+            "& .codex-row-compact .MuiDataGrid-cell > .MuiStack-root > :not(:first-child), & .codex-row-compact .MuiDataGrid-cell > .MuiBox-root > .MuiStack-root > :not(:first-child)": {
+              display: "none",
+            },
           }}
           rows={rows}
           columns={dataGridColumns}
