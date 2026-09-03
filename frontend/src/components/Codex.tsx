@@ -139,6 +139,11 @@ const backendBaseUrl = process.env.REACT_APP_BACKEND_URL || "";
 const MAX_EXTRA_COLUMNS = 12;
 const BS25_SELECTION_OUTBOX_KEY = "codex.bs25.selection-outbox.v1";
 const BS25_DRAFTS_KEY = "codex.bs25.drafts.v1";
+const CODEX_FROZEN_COLUMNS = [
+  { field: "__check__", width: 54 },
+  { field: "company_item_code", width: 220 },
+  { field: "description", width: 360 },
+];
 
 function bs25SelectionKey(
   environment: CodexEnvironmentName,
@@ -271,14 +276,16 @@ const lightColumns: GridColDef[] = [
   {
     field: "company_item_code",
     headerName: "Company Item Code",
-    minWidth: 210,
-    flex: 0.35,
+    width: 220,
+    minWidth: 220,
+    maxWidth: 220,
   },
   {
     field: "description",
     headerName: "Description",
-    minWidth: 340,
-    flex: 1,
+    width: 360,
+    minWidth: 360,
+    maxWidth: 360,
   },
   {
     field: "bs25_status",
@@ -350,7 +357,7 @@ export default function Codex() {
   const [bs25AiBusy, setBs25AiBusy] = useState(false);
   const [bs25Busy, setBs25Busy] = useState(false);
   const [selectAllBusy, setSelectAllBusy] = useState(false);
-  const [compactRows, setCompactRows] = useState(false);
+  const [compactRows, setCompactRows] = useState(true);
   const [externalSelection, setExternalSelection] = useState<{
     token: number;
     rows: Record<string, any>[];
@@ -1524,6 +1531,7 @@ export default function Codex() {
           filterFields={filterFields}
           toolbarLeft={toolbarLeft}
           checkboxSelection
+          frozenColumns={CODEX_FROZEN_COLUMNS}
           selectionHeaderAction={
             <Tooltip
               title={compactRows ? "Espandi tutti i record" : "Compatta tutti i record"}

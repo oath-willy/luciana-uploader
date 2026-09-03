@@ -30,6 +30,11 @@ export type ServerGridResult = {
   total: number;
 };
 
+type FrozenColumn = {
+  field: string;
+  width: number;
+};
+
 type ServerDataGridProps = {
   title: string;
   columns: GridColDef[];
@@ -46,6 +51,7 @@ type ServerDataGridProps = {
   externalSelection?: { token: number; rows: any[] };
   checkboxSelection?: boolean;
   selectionHeaderAction?: React.ReactNode;
+  frozenColumns?: FrozenColumn[];
   onSelectionChange?: (ids: Set<number | string>, rows: any[]) => void;
   onQueryChange?: (params: ServerGridFetchParams) => void;
   onRowsChange?: (rows: any[]) => void;
@@ -75,6 +81,7 @@ export default function ServerDataGrid({
   externalSelection,
   checkboxSelection = false,
   selectionHeaderAction,
+  frozenColumns = [],
   onSelectionChange,
   onQueryChange,
   onRowsChange,
@@ -341,6 +348,35 @@ export default function ServerDataGrid({
     return [selectionColumn, ...renderedColumns];
   }, [checkboxSelection, renderedColumns, selectionHeaderAction]);
 
+  const frozenColumnStyles = useMemo(() => {
+    const styles: Record<string, any> = {};
+    let left = 0;
+
+    frozenColumns.forEach((column, index) => {
+      const selector = `[data-field="${column.field}"]`;
+      styles[`& .MuiDataGrid-columnHeader${selector}`] = {
+        position: "sticky",
+        left,
+        zIndex: 4,
+        bgcolor: "background.paper",
+      };
+      styles[`& .MuiDataGrid-cell${selector}`] = {
+        position: "sticky",
+        left,
+        zIndex: 2,
+        bgcolor: "background.paper",
+      };
+      if (index === frozenColumns.length - 1) {
+        styles[`& .MuiDataGrid-columnHeader${selector}, & .MuiDataGrid-cell${selector}`] = {
+          boxShadow: "3px 0 4px -3px rgba(0, 0, 0, 0.35)",
+        };
+      }
+      left += column.width;
+    });
+
+    return styles;
+  }, [frozenColumns]);
+
   return (
     <Box
       sx={{
@@ -454,6 +490,18 @@ export default function ServerDataGrid({
             "& .codex-row-locked:hover": {
               bgcolor: "action.disabledBackground",
             },
+            "& .codex-row-locked .MuiDataGrid-cell": {
+              bgcolor: "action.disabledBackground",
+            },
+            "& .MuiDataGrid-row:hover .MuiDataGrid-cell": {
+              bgcolor: "action.hover",
+            },
+            "& .MuiDataGrid-row.Mui-selected .MuiDataGrid-cell": {
+              bgcolor: "action.selected",
+            },
+            "& .codex-row-locked:hover .MuiDataGrid-cell, & .codex-row-locked.Mui-selected .MuiDataGrid-cell": {
+              bgcolor: "action.disabledBackground",
+            },
             "& .codex-row-compact .MuiDataGrid-cell": {
               alignItems: "flex-start",
               overflow: "hidden",
@@ -465,6 +513,7 @@ export default function ServerDataGrid({
             "& .codex-row-compact .MuiDataGrid-cell > .MuiStack-root > :not(:first-child), & .codex-row-compact .MuiDataGrid-cell > .MuiBox-root > .MuiStack-root > :not(:first-child)": {
               display: "none",
             },
+            ...frozenColumnStyles,
           }}
           rows={rows}
           columns={dataGridColumns}
@@ -482,6 +531,7 @@ export default function ServerDataGrid({
           onPaginationModelChange={(model) => setPaginationModel(model)}
           pageSizeOptions={pageSizeOptions}
           checkboxSelection={checkboxSelection}
+          columnBufferPx={frozenColumns.length > 0 ? 10000 : undefined}
           keepNonExistentRowsSelected
           disableRowSelectionOnClick
           rowSelectionModel={rowSelectionModel}
