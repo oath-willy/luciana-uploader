@@ -1,3 +1,4 @@
+import gzip
 import os
 import tempfile
 import unittest
@@ -8,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from api.codex import router
-from services.codex_local_retrieval import publish_pdb_snapshot
+from services.codex_local_retrieval import pdb_snapshot_path, publish_pdb_snapshot
 from services.codex_local_store import CodexSnapshotStore, publish_snapshot, snapshot_path
 
 
@@ -159,6 +160,21 @@ class CodexLocalApiTests(unittest.TestCase):
         self.assertEqual(published.status_code, 200)
         self.assertEqual(published.json()["rows"], 3)
         self.assertEqual(published.json()["master_codes"], 1)
+
+    def test_pdb_snapshot_accepts_gzip_stream(self):
+        compressed = gzip.compress(pdb_snapshot_path("dev").read_bytes(), compresslevel=1)
+        published = self.client.put(
+            "/api/codex/pdb-snapshot?environment=dev",
+            content=compressed,
+            headers={
+                "Content-Type": "application/octet-stream",
+                "Content-Encoding": "gzip",
+                "X-Codex-Snapshot-Token": "snapshot-test-token",
+            },
+        )
+
+        self.assertEqual(published.status_code, 200)
+        self.assertEqual(published.json()["rows"], 4)
 
     def test_submit_ai_and_local_selection_contract(self):
         selection = self.client.post(

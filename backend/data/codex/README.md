@@ -41,6 +41,8 @@ In alternativa il produttore puo costruire lo stesso SQLite in staging e inviarl
 con `PUT /api/codex/pdb-snapshot?environment=dev`, `Content-Type: application/octet-stream` e
 header `X-Codex-Snapshot-Token`. Il backend esegue controllo schema, conteggio e `quick_check`,
 poi sostituisce atomicamente il file corrente. Le versioni precedenti non vengono conservate.
+Per file grandi l'endpoint accetta `Content-Encoding: gzip`; il produttore comprime in un file
+temporaneo cancellato subito dopo il trasferimento e il backend decomprime con un limite esplicito.
 
 Su Azure Web App configurare `CODEX_LOCAL_DATA_DIR=/home/data/codex` e
 `CODEX_RUNTIME_DB=/home/data/codex/runtime.sqlite3`: `/home` e il relativo volume persistente

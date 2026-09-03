@@ -10,11 +10,14 @@ from __future__ import annotations
 
 import argparse
 import csv
+import gzip
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -276,14 +279,24 @@ def _publish_remote_files(
     response.raise_for_status()
     snapshot_receipt = response.json()
 
-    with pdb_path.open("rb") as handle:
-        response = requests.put(
-            f"{backend_url.rstrip('/')}/api/codex/pdb-snapshot",
-            params={"environment": environment},
-            headers={**headers, "Content-Type": "application/octet-stream"},
-            data=handle,
-            timeout=3600,
-        )
+    with tempfile.TemporaryDirectory(prefix="codex-pdb-upload-") as temporary_dir:
+        compressed_path = Path(temporary_dir) / "pdb.sqlite3.gz"
+        with pdb_path.open("rb") as source, gzip.open(
+            compressed_path, "wb", compresslevel=1
+        ) as compressed:
+            shutil.copyfileobj(source, compressed, length=4 * 1024 * 1024)
+        with compressed_path.open("rb") as handle:
+            response = requests.put(
+                f"{backend_url.rstrip('/')}/api/codex/pdb-snapshot",
+                params={"environment": environment},
+                headers={
+                    **headers,
+                    "Content-Type": "application/octet-stream",
+                    "Content-Encoding": "gzip",
+                },
+                data=handle,
+                timeout=3600,
+            )
     response.raise_for_status()
     return {"snapshot": snapshot_receipt, "pdb": response.json()}
 

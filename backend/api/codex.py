@@ -1,6 +1,7 @@
 import os
 import secrets
 import tempfile
+import zlib
 from pathlib import Path
 from typing import Any, Dict, Literal
 from uuid import uuid4
@@ -41,6 +42,7 @@ CodexView = Literal["light", "full"]
 PAGE_SIZE_OPTIONS = {25, 50, 100, 250, 500}
 MAX_BS25AI_BATCH_SIZE = 5000
 MAX_BS25_BATCH_SIZE = 20
+MAX_SNAPSHOT_UPLOAD_BYTES = 5 * 1024 * 1024 * 1024
 
 
 class CodexColumn(BaseModel):
@@ -436,10 +438,29 @@ async def ingest_pdb_snapshot(
     os.close(descriptor)
     staged = Path(temporary_name)
     try:
+        content_encoding = request.headers.get("content-encoding", "").strip().lower()
+        if content_encoding not in {"", "identity", "gzip"}:
+            raise HTTPException(status_code=415, detail="Content-Encoding snapshot non supportato")
+        decompressor = (
+            zlib.decompressobj(16 + zlib.MAX_WBITS) if content_encoding == "gzip" else None
+        )
+        written = 0
         with staged.open("wb") as handle:
             async for chunk in request.stream():
-                handle.write(chunk)
+                decoded = decompressor.decompress(chunk) if decompressor else chunk
+                written += len(decoded)
+                if written > MAX_SNAPSHOT_UPLOAD_BYTES:
+                    raise HTTPException(status_code=413, detail="Snapshot PDB troppo grande")
+                handle.write(decoded)
+            if decompressor:
+                decoded = decompressor.flush()
+                written += len(decoded)
+                if written > MAX_SNAPSHOT_UPLOAD_BYTES:
+                    raise HTTPException(status_code=413, detail="Snapshot PDB troppo grande")
+                handle.write(decoded)
         return validate_and_publish_pdb_file(environment, staged)
+    except zlib.error as exc:
+        raise HTTPException(status_code=400, detail="Snapshot PDB gzip non valido") from exc
     except SnapshotValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     finally:
