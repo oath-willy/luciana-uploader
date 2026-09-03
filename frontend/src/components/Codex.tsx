@@ -23,7 +23,15 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import { CheckSquare, RefreshCw, ScanSearch, Sparkles, X } from "lucide-react";
+import {
+  CheckSquare,
+  ChevronsDown,
+  ChevronsUp,
+  RefreshCw,
+  ScanSearch,
+  Sparkles,
+  X,
+} from "lucide-react";
 import ServerDataGrid, {
   ServerGridFetchParams,
   ServerGridResult,
@@ -333,6 +341,7 @@ export default function Codex() {
   const [bs25AiBusy, setBs25AiBusy] = useState(false);
   const [bs25Busy, setBs25Busy] = useState(false);
   const [selectAllBusy, setSelectAllBusy] = useState(false);
+  const [compactRows, setCompactRows] = useState(false);
   const [externalSelection, setExternalSelection] = useState<{
     token: number;
     rows: Record<string, any>[];
@@ -1310,56 +1319,71 @@ export default function Codex() {
           </Button>
         </span>
       </Tooltip>
-      <Tooltip title={bs25Tooltip} disableHoverListener={!bs25Tooltip}>
-        <span>
-          <Button
-            variant="outlined"
-            startIcon={
-              bs25Busy ? (
-                <CircularProgress size={16} />
-              ) : (
-                <ScanSearch size={17} />
-              )
-            }
-            disabled={bs25Disabled}
-            onClick={handleBs25}
-          >
-            {bs25Busy
-              ? "Elaborazione..."
-              : `BS25${bs25SelectedRows.length ? ` (${bs25SelectedRows.length})` : ""}`}
-          </Button>
-        </span>
-      </Tooltip>
-      <Button
-        variant="outlined"
-        startIcon={
-          selectAllBusy ? <CircularProgress size={16} /> : <CheckSquare size={17} />
-        }
-        disabled={!selectedCompany || selectAllBusy || !bs25AiAvailable}
-        onClick={handleSelectAllBs25}
+      <Box
+        role="group"
+        aria-label="Azioni BS25"
+        sx={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 0.5,
+          p: 0.5,
+          border: "1px solid",
+          borderColor: "divider",
+          borderRadius: 1.5,
+          bgcolor: "action.hover",
+        }}
       >
-        {selectAllBusy ? "Selezione..." : "Seleziona tutti BS25"}
-      </Button>
-      <Tooltip title={bs25AiTooltip} disableHoverListener={!bs25AiTooltip}>
-        <span>
-          <Button
-            variant="contained"
-            startIcon={
-              bs25AiBusy ? (
-                <CircularProgress size={16} color="inherit" />
-              ) : (
-                <Sparkles size={17} />
-              )
-            }
-            disabled={bs25AiDisabled}
-            onClick={handleBs25Ai}
-          >
-            {bs25AiBusy
-              ? "Invio..."
-              : `BS25AI${bs25AiSelectedRows.length ? ` (${bs25AiSelectedRows.length})` : ""}`}
-          </Button>
-        </span>
-      </Tooltip>
+        <Tooltip title={bs25Tooltip} disableHoverListener={!bs25Tooltip}>
+          <span>
+            <Button
+              variant="outlined"
+              startIcon={
+                bs25Busy ? (
+                  <CircularProgress size={16} />
+                ) : (
+                  <ScanSearch size={17} />
+                )
+              }
+              disabled={bs25Disabled}
+              onClick={handleBs25}
+            >
+              {bs25Busy
+                ? "Elaborazione..."
+                : `BS25${bs25SelectedRows.length ? ` (${bs25SelectedRows.length})` : ""}`}
+            </Button>
+          </span>
+        </Tooltip>
+        <Button
+          variant="outlined"
+          startIcon={
+            selectAllBusy ? <CircularProgress size={16} /> : <CheckSquare size={17} />
+          }
+          disabled={!selectedCompany || selectAllBusy || !bs25AiAvailable}
+          onClick={handleSelectAllBs25}
+        >
+          {selectAllBusy ? "Selezione..." : "ALL BS25"}
+        </Button>
+        <Tooltip title={bs25AiTooltip} disableHoverListener={!bs25AiTooltip}>
+          <span>
+            <Button
+              variant="contained"
+              startIcon={
+                bs25AiBusy ? (
+                  <CircularProgress size={16} color="inherit" />
+                ) : (
+                  <Sparkles size={17} />
+                )
+              }
+              disabled={bs25AiDisabled}
+              onClick={handleBs25Ai}
+            >
+              {bs25AiBusy
+                ? "Invio..."
+                : `BS25AI${bs25AiSelectedRows.length ? ` (${bs25AiSelectedRows.length})` : ""}`}
+            </Button>
+          </span>
+        </Tooltip>
+      </Box>
       <Tooltip
         title={aiLookupAvailable ? "" : "AI Lookup non ancora configurato"}
       >
@@ -1387,7 +1411,10 @@ export default function Codex() {
       sx={{
         height: "calc(100dvh - 16px)",
         width: "100%",
+        maxWidth: "100%",
         minHeight: 0,
+        minWidth: 0,
+        overflow: "hidden",
         display: "flex",
         flexDirection: "column",
       }}
@@ -1452,6 +1479,10 @@ export default function Codex() {
         sx={{
           flex: 1,
           minHeight: 0,
+          minWidth: 0,
+          width: "100%",
+          maxWidth: "100%",
+          overflow: "hidden",
           display: "grid",
           gridTemplateRows:
             detailRow || loadingDetail
@@ -1471,6 +1502,27 @@ export default function Codex() {
           filterFields={filterFields}
           toolbarLeft={toolbarLeft}
           checkboxSelection
+          selectionHeaderAction={
+            <Tooltip
+              title={compactRows ? "Espandi tutti i record" : "Compatta tutti i record"}
+            >
+              <IconButton
+                size="small"
+                color={compactRows ? "primary" : "default"}
+                aria-label={
+                  compactRows ? "Espandi tutti i record" : "Compatta tutti i record"
+                }
+                aria-pressed={compactRows}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setCompactRows((current) => !current);
+                }}
+                sx={{ width: 24, height: 24 }}
+              >
+                {compactRows ? <ChevronsDown size={15} /> : <ChevronsUp size={15} />}
+              </IconButton>
+            </Tooltip>
+          }
           onSelectionChange={handleSelectionChange}
           onQueryChange={setCurrentQuery}
           externalSelection={externalSelection}
@@ -1478,8 +1530,13 @@ export default function Codex() {
           onRowClick={handleRowClick}
           rowHeight={34}
           getRowHeight={(params) =>
-            params.model.bs25_status === "completed" ? "auto" : 52
+            compactRows
+              ? 44
+              : params.model.bs25_status === "completed"
+                ? "auto"
+                : 52
           }
+          estimatedRowHeight={compactRows ? 44 : 190}
           getRowClassName={(params) => {
             const lookupRunning = ["queued", "analyzing"].includes(
               params.row.bs25_status
@@ -1499,9 +1556,14 @@ export default function Codex() {
             const selectionSaving =
               Boolean(localPending) ||
               params.row.bs25_selection_status === "saving";
-            return lookupRunning || aiRunning || selectionSaving
-              ? "codex-row-locked"
-              : "";
+            return [
+              lookupRunning || aiRunning || selectionSaving
+                ? "codex-row-locked"
+                : "",
+              compactRows ? "codex-row-compact" : "",
+            ]
+              .filter(Boolean)
+              .join(" ");
           }}
           isRowSelectable={(params) =>
             rowHasUnsavedBs25(params.row) || rowNeedsBs25(params.row)

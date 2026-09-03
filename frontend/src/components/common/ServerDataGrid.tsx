@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DataGrid,
+  GRID_CHECKBOX_SELECTION_COL_DEF,
   GridColDef,
+  GridHeaderCheckbox,
   GridPagination,
   GridPaginationModel,
   GridRowParams,
@@ -43,12 +45,14 @@ type ServerDataGridProps = {
   selectionResetToken?: number;
   externalSelection?: { token: number; rows: any[] };
   checkboxSelection?: boolean;
+  selectionHeaderAction?: React.ReactNode;
   onSelectionChange?: (ids: Set<number | string>, rows: any[]) => void;
   onQueryChange?: (params: ServerGridFetchParams) => void;
   onRowsChange?: (rows: any[]) => void;
   onRowClick?: (params: GridRowParams) => void;
   rowHeight?: number;
   getRowHeight?: (params: any) => number | "auto" | null | undefined;
+  estimatedRowHeight?: number;
   getRowClassName?: (params: any) => string;
   isRowSelectable?: (params: GridRowParams) => boolean;
   height?: string | number;
@@ -70,12 +74,14 @@ export default function ServerDataGrid({
   selectionResetToken = 0,
   externalSelection,
   checkboxSelection = false,
+  selectionHeaderAction,
   onSelectionChange,
   onQueryChange,
   onRowsChange,
   onRowClick,
   rowHeight = 36,
   getRowHeight,
+  estimatedRowHeight = 190,
   getRowClassName,
   isRowSelectable,
   height = "89vh",
@@ -304,12 +310,46 @@ export default function ServerDataGrid({
     ]
   );
 
+  const dataGridColumns = useMemo(() => {
+    if (!checkboxSelection || !selectionHeaderAction) {
+      return renderedColumns;
+    }
+
+    const selectionColumn: GridColDef = {
+      ...GRID_CHECKBOX_SELECTION_COL_DEF,
+      width: 54,
+      minWidth: 54,
+      maxWidth: 54,
+      renderHeader: (params) => (
+        <Box
+          sx={{
+            height: "100%",
+            width: "100%",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "space-evenly",
+            py: 0.25,
+          }}
+        >
+          {selectionHeaderAction}
+          <GridHeaderCheckbox {...params} />
+        </Box>
+      ),
+    };
+
+    return [selectionColumn, ...renderedColumns];
+  }, [checkboxSelection, renderedColumns, selectionHeaderAction]);
+
   return (
     <Box
       sx={{
         height,
         width: "100%",
         minHeight: 0,
+        minWidth: 0,
+        maxWidth: "100%",
+        overflow: "hidden",
         p: 0,
         display: "flex",
         flexDirection: "column",
@@ -389,52 +429,75 @@ export default function ServerDataGrid({
         </Alert>
       )}
 
-      <DataGrid
+      <Box
         sx={{
+          position: "relative",
           flex: 1,
           minHeight: 0,
-          "& .codex-row-locked": {
-            bgcolor: "action.disabledBackground",
-            color: "text.secondary",
-          },
-          "& .codex-row-locked:hover": {
-            bgcolor: "action.disabledBackground",
-          },
+          minWidth: 0,
+          width: "100%",
+          maxWidth: "100%",
+          overflow: "hidden",
         }}
-        rows={rows}
-        columns={renderedColumns}
-        getRowId={getRowId}
-        loading={loading}
-        rowHeight={rowHeight}
-        getRowHeight={getRowHeight}
-        getEstimatedRowHeight={() => 190}
-        getRowClassName={getRowClassName}
-        isRowSelectable={isRowSelectable}
-        columnHeaderHeight={76}
-        paginationMode="server"
-        rowCount={rowCount}
-        paginationModel={paginationModel}
-        onPaginationModelChange={(model) => setPaginationModel(model)}
-        pageSizeOptions={pageSizeOptions}
-        checkboxSelection={checkboxSelection}
-        keepNonExistentRowsSelected
-        disableRowSelectionOnClick
-        rowSelectionModel={rowSelectionModel}
-        onRowSelectionModelChange={(newSelection) =>
-          setRowSelectionModel(newSelection)
-        }
-        onRowClick={onRowClick}
-        localeText={{ noRowsLabel: emptyMessage }}
-        slots={{
-          footer: () => (
-            <CustomFooter
-              selectedCount={selectedIds.size}
-              loadedCount={rows.length}
-              rowCount={rowCount}
-            />
-          ),
-        }}
-      />
+      >
+        <DataGrid
+          sx={{
+            height: "100%",
+            width: "100%",
+            minHeight: 0,
+            minWidth: 0,
+            maxWidth: "100%",
+            "& .codex-row-locked": {
+              bgcolor: "action.disabledBackground",
+              color: "text.secondary",
+            },
+            "& .codex-row-locked:hover": {
+              bgcolor: "action.disabledBackground",
+            },
+            "& .codex-row-compact .MuiDataGrid-cell": {
+              alignItems: "flex-start",
+              overflow: "hidden",
+            },
+            "& .codex-row-compact .MuiDataGrid-cell > *": {
+              maxHeight: "100%",
+              overflow: "hidden",
+            },
+          }}
+          rows={rows}
+          columns={dataGridColumns}
+          getRowId={getRowId}
+          loading={loading}
+          rowHeight={rowHeight}
+          getRowHeight={getRowHeight}
+          getEstimatedRowHeight={() => estimatedRowHeight}
+          getRowClassName={getRowClassName}
+          isRowSelectable={isRowSelectable}
+          columnHeaderHeight={76}
+          paginationMode="server"
+          rowCount={rowCount}
+          paginationModel={paginationModel}
+          onPaginationModelChange={(model) => setPaginationModel(model)}
+          pageSizeOptions={pageSizeOptions}
+          checkboxSelection={checkboxSelection}
+          keepNonExistentRowsSelected
+          disableRowSelectionOnClick
+          rowSelectionModel={rowSelectionModel}
+          onRowSelectionModelChange={(newSelection) =>
+            setRowSelectionModel(newSelection)
+          }
+          onRowClick={onRowClick}
+          localeText={{ noRowsLabel: emptyMessage }}
+          slots={{
+            footer: () => (
+              <CustomFooter
+                selectedCount={selectedIds.size}
+                loadedCount={rows.length}
+                rowCount={rowCount}
+              />
+            ),
+          }}
+        />
+      </Box>
     </Box>
   );
 }
