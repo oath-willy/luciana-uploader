@@ -1,6 +1,6 @@
 import unittest
 
-from codex_app_server import CodexAppServer
+from codex_app_server import CodexAppServer, _notification_turn_id
 from prompts import RESULT_SCHEMA, build_goal, build_prompt
 
 
@@ -37,6 +37,18 @@ class CodexAppServerProtocolTests(unittest.TestCase):
         self.assertIn("manufacturer, brand/family, pack, feature, measure", prompt)
         self.assertIn("fuori dalla Top-3", prompt)
         self.assertFalse(RESULT_SCHEMA.get("additionalProperties", True))
+
+    def test_notification_turn_id_supports_item_and_turn_shapes(self):
+        self.assertEqual(
+            _notification_turn_id("item/completed", {"turnId": "turn-1"}),
+            "turn-1",
+        )
+        self.assertEqual(
+            _notification_turn_id(
+                "turn/completed", {"turn": {"id": "turn-2", "status": "completed"}}
+            ),
+            "turn-2",
+        )
 
 
 if __name__ == "__main__":

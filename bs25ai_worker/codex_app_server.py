@@ -126,7 +126,7 @@ class CodexAppServer:
             message = self._next_message(deadline)
             method = message.get("method")
             params = message.get("params") or {}
-            if params.get("turnId") != turn_id:
+            if _notification_turn_id(method, params) != turn_id:
                 continue
             if method == "item/completed":
                 item = params.get("item") or {}
@@ -200,3 +200,13 @@ class CodexAppServer:
         assert self._process and self._process.stderr
         for line in self._process.stderr:
             self._stderr.append(line.rstrip())
+
+
+def _notification_turn_id(method: str | None, params: dict[str, Any]) -> str | None:
+    """Return the turn id for both item and turn lifecycle notifications."""
+
+    if method == "turn/completed":
+        turn = params.get("turn") or {}
+        return str(turn.get("id")) if turn.get("id") else None
+    turn_id = params.get("turnId")
+    return str(turn_id) if turn_id else None

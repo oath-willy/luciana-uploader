@@ -11,6 +11,16 @@ Databricks deve pubblicare un payload completo con `PUT /api/codex/snapshot` e h
 ignorati da Git. Il payload contiene `environment`, `snapshot_id`, `created_at`, `companies`,
 `rows` e la reference canonica `master_codes`.
 
+Il Job `databricks/publish_codex_snapshot.py`, eseguito da un checkout Git del repository,
+pubblica nello stesso run anche `pdb-{environment}.sqlite3`. Riusa direttamente il builder
+BS25 del backend, invia il file in streaming e confronta i conteggi prima di terminare. Il widget
+`publish_pdb=false` consente di saltare il PDB soltanto nei run diagnostici.
+
+Per il bootstrap manuale si usa `databricks/bootstrap_codex_snapshots.py`: legge in streaming
+le sole tre tabelle Silver approvate tramite Statement Execution API, crea i due SQLite correnti
+e non conserva dump CSV o versioni storiche. Questo script e il Job Databricks sono processi di
+manutenzione esterni: non vengono importati o eseguiti dal backend web.
+
 Il processo produttore deve scrivere soltanto dopo aver congelato e validato le sorgenti
 `product_to_classify`, `codex_bs25_lookup` e `dump_pdb_flats`. Non deve aggiornare il file SQLite
 direttamente su share remota e non deve inviare payload parziali.

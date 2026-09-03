@@ -57,6 +57,20 @@ class CodexLocalApiTests(unittest.TestCase):
                     "description": "HeraCeram cre active indication",
                     "details": {},
                 },
+                {
+                    "company": "HERAEUS",
+                    "item_code": "A3",
+                    "company_item_code": "HERAEUS|A3",
+                    "description": "already selected fixture",
+                    "bs25_status": "completed",
+                    "bs25_proposal_1": {**proposal, "identity_rank": 1},
+                    "bs25_proposal_2": {**proposal, "identity_rank": 2},
+                    "bs25_proposal_3": {**proposal, "identity_rank": 3},
+                    "bs25_selected_proposal_rank": 1,
+                    "bs25_selected_master_code": "38_02_02",
+                    "bs25_selection_status": "completed",
+                    "details": {},
+                },
             ],
             [{"master_code": "38_02_02", "components": {}}],
         )
@@ -90,7 +104,7 @@ class CodexLocalApiTests(unittest.TestCase):
         )
 
         self.assertEqual(search.status_code, 200)
-        self.assertEqual(search.json()["total"], 2)
+        self.assertEqual(search.json()["total"], 3)
         self.assertEqual(eligible.json()["total"], 1)
 
         companies = self.client.get("/api/codex/companies?environment=dev")
@@ -99,6 +113,30 @@ class CodexLocalApiTests(unittest.TestCase):
         self.assertEqual(config.json()["data_source"], "local_snapshot")
         self.assertTrue(config.json()["pdb_available"]["dev"])
         self.assertTrue(config.json()["bs25ai_mock_mode"])
+
+    def test_snapshot_selection_is_not_eligible_and_can_be_cleared_locally(self):
+        before = self.client.post(
+            "/api/codex/bs25ai/eligible",
+            json={"environment": "dev", "company": "HERAEUS"},
+        )
+        cleared = self.client.post(
+            "/api/codex/bs25/select",
+            json={
+                "environment": "dev",
+                "company": "HERAEUS",
+                "item_code": "A3",
+                "clear": True,
+                "selection_request_id": "selection-request-0003",
+            },
+        )
+        after = self.client.post(
+            "/api/codex/bs25ai/eligible",
+            json={"environment": "dev", "company": "HERAEUS"},
+        )
+
+        self.assertEqual(before.json()["total"], 1)
+        self.assertTrue(cleared.json()["selected"])
+        self.assertEqual(after.json()["total"], 2)
 
     def test_submit_ai_and_local_selection_contract(self):
         selection = self.client.post(

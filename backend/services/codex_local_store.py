@@ -265,6 +265,15 @@ class CodexSnapshotStore:
             "bs25_proposal_2": _loads(row["proposal_2_json"], None),
             "bs25_proposal_3": _loads(row["proposal_3_json"], None),
         }
+        if row["selected_proposal_rank"] is not None or row["selected_master_code"]:
+            result.update(
+                {
+                    "bs25_selected_source": "snapshot",
+                    "bs25_selected_proposal_rank": row["selected_proposal_rank"],
+                    "bs25_selected_master_code": row["selected_master_code"],
+                    "bs25_selection_status": row["selection_status"] or "completed",
+                }
+            )
         if view == "full":
             result.update(_loads(row["details_json"], {}))
         return result
@@ -446,10 +455,16 @@ class RuntimeStore:
             if kind == "clear":
                 connection.execute(
                     """
-                    DELETE FROM selections
-                    WHERE environment=? AND UPPER(company)=UPPER(?) AND item_code=?
+                    INSERT INTO selections (
+                        environment, company, item_code, selection_kind, proposal_rank,
+                        master_code, selection_request_id, selected_by, updated_at
+                    ) VALUES (?, ?, ?, 'clear', NULL, NULL, ?, ?, ?)
+                    ON CONFLICT(environment, company, item_code) DO UPDATE SET
+                        selection_kind='clear', proposal_rank=NULL, master_code=NULL,
+                        selection_request_id=excluded.selection_request_id,
+                        selected_by=excluded.selected_by, updated_at=excluded.updated_at
                     """,
-                    (environment, company, item_code),
+                    (environment, company, item_code, request_id, selected_by, now),
                 )
                 connection.commit()
                 return {
@@ -547,16 +562,27 @@ class RuntimeStore:
                 result.update({f"aibs25_{key}": value for key, value in job.items() if key not in {"environment", "company", "item_code"}})
             selection = selections_by_code.get(result["item_code"])
             if selection:
-                source = "cleared" if selection["selection_kind"] == "clear" else selection["selection_kind"]
-                result.update(
-                    {
-                        "bs25_selected_source": source,
-                        "bs25_selected_proposal_rank": selection["proposal_rank"],
-                        "bs25_selected_master_code": selection["master_code"],
-                        "bs25_selection_request_id": selection["selection_request_id"],
-                        "bs25_selection_status": "completed",
-                    }
-                )
+                if selection["selection_kind"] == "clear":
+                    result.update(
+                        {
+                            "bs25_selected_source": None,
+                            "bs25_selected_proposal_rank": None,
+                            "bs25_selected_master_code": None,
+                            "bs25_selection_request_id": selection["selection_request_id"],
+                            "bs25_selection_status": None,
+                            "bs25_selection_cleared": True,
+                        }
+                    )
+                else:
+                    result.update(
+                        {
+                            "bs25_selected_source": selection["selection_kind"],
+                            "bs25_selected_proposal_rank": selection["proposal_rank"],
+                            "bs25_selected_master_code": selection["master_code"],
+                            "bs25_selection_request_id": selection["selection_request_id"],
+                            "bs25_selection_status": "completed",
+                        }
+                    )
 
     def _job_dict(self, row: sqlite3.Row) -> dict[str, Any]:
         result = dict(row)
@@ -694,6 +720,9 @@ def publish_snapshot(
                     proposal_1_json TEXT,
                     proposal_2_json TEXT,
                     proposal_3_json TEXT,
+                    selected_proposal_rank INTEGER,
+                    selected_master_code TEXT,
+                    selection_status TEXT,
                     PRIMARY KEY(company, item_code)
                 );
                 CREATE INDEX items_company_code_idx ON items(company, company_item_code);
@@ -750,11 +779,14 @@ def publish_snapshot(
                         _dumps_optional(item.get("bs25_proposal_1")),
                         _dumps_optional(item.get("bs25_proposal_2")),
                         _dumps_optional(item.get("bs25_proposal_3")),
+                        item.get("bs25_selected_proposal_rank"),
+                        item.get("bs25_selected_master_code"),
+                        item.get("bs25_selection_status"),
                     )
                 )
             connection.executemany(
                 """
-                INSERT INTO items VALUES (?,?,?,?,?,?,?,?,?,?)
+                INSERT INTO items VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 serialized_rows,
             )

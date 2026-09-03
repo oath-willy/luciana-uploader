@@ -82,7 +82,11 @@ def review(payload: ReviewRequest, authorization: str | None = Header(default=No
                     codex.resume_thread(thread_id, work_dir)
                 else:
                     thread_id = codex.start_thread(work_dir)
-                    codex.set_goal(thread_id, build_goal(payload.item), "active")
+                    # An active Goal on an idle thread starts an automatic
+                    # continuation turn. Keep it persisted but paused while the
+                    # API-owned structured turn runs, otherwise App Server can
+                    # reject our output schema as belonging to another turn.
+                    codex.set_goal(thread_id, build_goal(payload.item), "paused")
                 result = codex.run_turn(
                     thread_id,
                     build_prompt(

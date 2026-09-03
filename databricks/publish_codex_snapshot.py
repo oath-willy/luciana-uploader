@@ -7,7 +7,11 @@ then publishes it atomically through the backend ingest endpoint.
 """
 
 import json
+import os
+import sys
+import tempfile
 from datetime import datetime, timezone
+from pathlib import Path
 
 import requests
 from pyspark.sql import Window, functions as F
@@ -18,12 +22,14 @@ dbutils.widgets.text("catalog", "research_dev")
 dbutils.widgets.text("backend_url", "")
 dbutils.widgets.text("secret_scope", "luciana")
 dbutils.widgets.text("secret_key", "codex-snapshot-token")
+dbutils.widgets.dropdown("publish_pdb", "true", ["true", "false"])
 
 environment = dbutils.widgets.get("environment").strip()
 catalog = dbutils.widgets.get("catalog").strip()
 backend_url = dbutils.widgets.get("backend_url").strip().rstrip("/")
 secret_scope = dbutils.widgets.get("secret_scope").strip()
 secret_key = dbutils.widgets.get("secret_key").strip()
+should_publish_pdb = dbutils.widgets.get("publish_pdb").strip().lower() == "true"
 
 if environment not in {"dev", "prod"}:
     raise ValueError("environment deve essere dev o prod")
@@ -33,14 +39,6 @@ if not backend_url.startswith("https://"):
 products = spark.table(f"{catalog}.silver.product_to_classify")
 lookups = spark.table(f"{catalog}.silver.codex_bs25_lookup")
 pdb = spark.table(f"{catalog}.silver.dump_pdb_flats")
-
-company_mapping = {
-    "EURONDA": ("landing_euronda", ["item_description", "product_family_level_1", "brand_company", "item_code", "channel_raw", "customer_raw", "file_name"]),
-    "INTVENT": ("landing_intvent", ["item_description", "product_family_level_1", "manufacturer_item_code", "brand_company", "channel_raw", "customer_raw", "file_name"]),
-    "IVOCLAR": ("landing_ivoclar", ["item_description", "brand_company", "channel_raw", "customer_raw", "file_name"]),
-    "HERAEUS": ("landing_kulzer", ["item_description", "brand_company", "channel_raw", "customer_raw", "file_name"]),
-}
-all_landing_fields = sorted({field for _, fields in company_mapping.values() for field in fields})
 
 latest_lookup_window = Window.partitionBy(
     F.upper(F.trim("company")), F.trim("item_code")
@@ -55,6 +53,9 @@ latest_lookups = (
         F.col("proposal_1").alias("bs25_proposal_1"),
         F.col("proposal_2").alias("bs25_proposal_2"),
         F.col("proposal_3").alias("bs25_proposal_3"),
+        F.col("selected_proposal_rank").alias("bs25_selected_proposal_rank"),
+        F.col("selected_master_code").alias("bs25_selected_master_code"),
+        F.col("selection_status").alias("bs25_selection_status"),
     )
 )
 
@@ -77,6 +78,9 @@ base_items = (
         F.col("b.bs25_proposal_1"),
         F.col("b.bs25_proposal_2"),
         F.col("b.bs25_proposal_3"),
+        F.col("b.bs25_selected_proposal_rank"),
+        F.col("b.bs25_selected_master_code"),
+        F.col("b.bs25_selection_status"),
         F.col("p.first_received_date"),
         F.col("p.source_file"),
         F.col("p.search_type"),
@@ -85,42 +89,23 @@ base_items = (
     )
 )
 
-landing_frames = []
-for company, (table_name, fields) in company_mapping.items():
-    landing = spark.table(f"{catalog}.bronze.{table_name}")
-    landing_frames.append(
-        landing.select(
-            F.lit(company).alias("_landing_company"),
-            F.upper(F.trim("company_item_code")).alias("_landing_key"),
-            F.col("date").alias("_landing_date"),
-            F.col("file_name").alias("_landing_file"),
-            *[
-                (F.col(field) if field in fields else F.lit(None)).alias(f"landing_{field}")
-                for field in all_landing_fields
-            ],
+joined = base_items.alias("i").select(
+    *[
+        F.col(f"i.{field}")
+        for field in (
+            "company",
+            "item_code",
+            "company_item_code",
+            "description",
+            "bs25_status",
+            "bs25_proposal_1",
+            "bs25_proposal_2",
+            "bs25_proposal_3",
+            "bs25_selected_proposal_rank",
+            "bs25_selected_master_code",
+            "bs25_selection_status",
         )
-    )
-
-landing_union = landing_frames[0]
-for frame in landing_frames[1:]:
-    landing_union = landing_union.unionByName(frame, allowMissingColumns=True)
-landing_window = Window.partitionBy("_landing_company", "_landing_key").orderBy(
-    F.col("_landing_date").desc_nulls_last(), F.col("_landing_file").desc_nulls_last()
-)
-landing_latest = (
-    landing_union.withColumn("_landing_rank", F.row_number().over(landing_window))
-    .where(F.col("_landing_rank") == 1)
-    .drop("_landing_rank", "_landing_date", "_landing_file")
-)
-
-joined_with_landing = base_items.alias("i").join(
-    landing_latest.alias("l"),
-    (F.col("i.company") == F.col("l._landing_company"))
-    & (F.upper(F.trim(F.col("i.company_item_code"))) == F.col("l._landing_key")),
-    "left",
-)
-joined = joined_with_landing.select(
-    *[F.col(f"i.{field}") for field in ("company", "item_code", "company_item_code", "description", "bs25_status", "bs25_proposal_1", "bs25_proposal_2", "bs25_proposal_3")],
+    ],
     F.to_json(
         F.struct(
             F.col("i.first_received_date"),
@@ -128,7 +113,6 @@ joined = joined_with_landing.select(
             F.col("i.search_type"),
             F.col("i.status"),
             F.col("i.created_date"),
-            *[F.col(f"l.landing_{field}") for field in all_landing_fields],
         )
     ).alias("details_json"),
 )
@@ -156,23 +140,13 @@ base_detail_columns = [
 ]
 companies = []
 for company in company_values:
-    mapping = company_mapping.get(company)
     extra_columns = list(base_detail_columns)
-    if mapping:
-        extra_columns.extend(
-            {
-                "field": f"landing_{field}",
-                "header_name": field.replace("_", " ").title(),
-                "value_type": "string",
-            }
-            for field in mapping[1]
-        )
     companies.append(
         {
             "company": company,
             "full_view_available": True,
             "full_view_message": None,
-            "extra_columns": extra_columns[:12],
+            "extra_columns": extra_columns,
         }
     )
 
@@ -224,4 +198,74 @@ response.raise_for_status()
 receipt = response.json()
 if receipt.get("rows") != row_count:
     raise RuntimeError(f"Conteggio snapshot non coerente: {receipt}")
-print(json.dumps(receipt, ensure_ascii=False))
+
+pdb_receipt = None
+if should_publish_pdb:
+    root_candidates = [Path.cwd()]
+    if "__file__" in globals():
+        root_candidates.append(Path(__file__).resolve().parents[1])
+    repository_root = next(
+        (
+            candidate
+            for candidate in root_candidates
+            if (candidate / "backend" / "services" / "codex_local_retrieval.py").is_file()
+        ),
+        None,
+    )
+    if repository_root is None:
+        raise RuntimeError(
+            "Repository luciana-uploader non disponibile al Job: impossibile riusare il builder PDB"
+        )
+    sys.path.insert(0, str(repository_root / "backend"))
+    from services.codex_local_retrieval import publish_pdb_snapshot
+
+    pdb_columns = [
+        "company_item_code",
+        "item_description_cleaned",
+        "manufacturer_company_name",
+        "father_name",
+        "mc_lvl1_code",
+        "mc_lvl2_code",
+        "mc_lvl3_code",
+        "pack",
+        "feature",
+        "measure",
+    ]
+
+    def pdb_rows():
+        for pdb_row in pdb.select(*pdb_columns).toLocalIterator():
+            yield pdb_row.asDict(recursive=True)
+
+    with tempfile.TemporaryDirectory(prefix="codex-pdb-") as temporary_dir:
+        previous_data_dir = os.environ.get("CODEX_LOCAL_DATA_DIR")
+        os.environ["CODEX_LOCAL_DATA_DIR"] = temporary_dir
+        try:
+            built = publish_pdb_snapshot(
+                environment,
+                f"{catalog}.silver.dump_pdb_flats-{created_at}",
+                created_at,
+                pdb_rows(),
+            )
+            pdb_path = Path(built["path"])
+            with pdb_path.open("rb") as handle:
+                pdb_response = requests.put(
+                    f"{backend_url}/api/codex/pdb-snapshot",
+                    params={"environment": environment},
+                    headers={
+                        "X-Codex-Snapshot-Token": token,
+                        "Content-Type": "application/octet-stream",
+                    },
+                    data=handle,
+                    timeout=1800,
+                )
+            pdb_response.raise_for_status()
+            pdb_receipt = pdb_response.json()
+            if pdb_receipt.get("rows") != built.get("rows"):
+                raise RuntimeError(f"Conteggio PDB non coerente: {pdb_receipt}")
+        finally:
+            if previous_data_dir is None:
+                os.environ.pop("CODEX_LOCAL_DATA_DIR", None)
+            else:
+                os.environ["CODEX_LOCAL_DATA_DIR"] = previous_data_dir
+
+print(json.dumps({"codex": receipt, "pdb": pdb_receipt}, ensure_ascii=False))
