@@ -233,14 +233,20 @@ function persistBs25Drafts(drafts: Record<string, Bs25Draft>) {
   window.localStorage.setItem(BS25_DRAFTS_KEY, JSON.stringify(drafts));
 }
 
-function rowHasBs25Candidates(row: Record<string, any>) {
+function rowHasBs25Candidates(row?: Record<string, any>) {
+  if (!row) {
+    return false;
+  }
   return (
     row.bs25_status === "completed" &&
     [1, 2, 3].every((rank) => Boolean(row[`bs25_proposal_${rank}`]))
   );
 }
 
-function rowHasUnsavedBs25(row: Record<string, any>) {
+function rowHasUnsavedBs25(row?: Record<string, any>) {
+  if (!row) {
+    return false;
+  }
   return (
     rowHasBs25Candidates(row) &&
     !row.bs25_selection_status &&
@@ -249,7 +255,10 @@ function rowHasUnsavedBs25(row: Record<string, any>) {
   );
 }
 
-function rowNeedsBs25(row: Record<string, any>) {
+function rowNeedsBs25(row?: Record<string, any>) {
+  if (!row) {
+    return false;
+  }
   return (
     !rowHasBs25Candidates(row) &&
     !["queued", "analyzing"].includes(row.bs25_status) &&
