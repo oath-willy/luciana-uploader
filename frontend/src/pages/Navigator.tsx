@@ -39,7 +39,8 @@ import FatherNames from '../components/database/FatherNames';
 import Countries from '../components/database/Countries';
 import Currencies from '../components/database/Currencies';
 import CountriesCurrencies from '../components/database/CountriesCurrencies';
-import Codex from '../components/Codex';
+import McCode from '../components/McCode';
+import PdbSettings from '../components/database/PdbSettings';
 
 type UserData = {
   name: string;
@@ -157,9 +158,12 @@ export default function AdminDashboardPage() {
                         <NavLink label="PDB" pl="md">
                           <NavLink label="Products" pl="lg" component={Link} to="/navigator/products" />
                           <NavLink label="Products Test" pl="lg" component={Link} to="/navigator/products-test" />
-                          <NavLink label="CODEX" pl="lg" component={Link} to="/navigator/codex" />
+                          <NavLink label="CODE TOOLS" pl="lg">
+                            <NavLink label="MC CODE" pl="xl" component={Link} to="/navigator/mc-code" />
+                          </NavLink>
                           <NavLink label="Companies" pl="lg" component={Link} to="/navigator/companies" />
                           <NavLink label="Father Names" pl="lg" component={Link} to="/navigator/father-names" />
+                          <NavLink label="Settings" pl="lg" component={Link} to="/navigator/pdb-settings" />
                         </NavLink>
 
                         <NavLink label="Domain Tables" pl="md">
@@ -239,9 +243,11 @@ export default function AdminDashboardPage() {
 
           <Route path="products" element={<PDBCodifica />} />
           <Route path="products-test" element={<ProductsTest />} />
-          <Route path="codex" element={<Codex />} />
+          <Route path="mc-code" element={<McCode />} />
+          <Route path="codex" element={<Navigate to="/navigator/mc-code" replace />} />
           <Route path="companies" element={<Companies />} />
           <Route path="father-names" element={<FatherNames />} />
+          <Route path="pdb-settings" element={<PdbSettings />} />
           <Route path="countries" element={<Countries />} />
           <Route path="currencies" element={<Currencies />} />
           <Route path="countries-currencies" element={<CountriesCurrencies />} />

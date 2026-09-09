@@ -1,4 +1,3 @@
-import gzip
 import os
 import tempfile
 import unittest
@@ -8,22 +7,23 @@ from unittest.mock import patch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from api.codex import router
-from services.codex_local_retrieval import pdb_snapshot_path, publish_pdb_snapshot
-from services.codex_local_store import CodexSnapshotStore, publish_snapshot, snapshot_path
+from api.mc_code import legacy_router, router
+from services.mc_code_local_store import McCodeSnapshotStore, publish_snapshot, snapshot_path
 
 
-class CodexLocalApiTests(unittest.TestCase):
+class McCodeLocalApiTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         data_dir = Path(self.temporary.name)
         self.environment_patch = patch.dict(
             os.environ,
             {
-                "CODEX_LOCAL_DATA_DIR": str(data_dir),
-                "CODEX_RUNTIME_DB": str(data_dir / "runtime.sqlite3"),
-                "CODEX_SNAPSHOT_TOKEN": "snapshot-test-token",
+                "MC_CODE_LOCAL_DATA_DIR": str(data_dir),
+                "MC_CODE_RUNTIME_DB": str(data_dir / "runtime.sqlite3"),
+                "MC_CODE_SNAPSHOT_TOKEN": "snapshot-test-token",
                 "BS25AI_MOCK_MODE": "true",
+                "BS25_WORKER_URL": "http://vm04.test:8094",
+                "BS25_WORKER_TOKEN": "worker-test-token",
             },
         )
         self.environment_patch.start()
@@ -76,19 +76,9 @@ class CodexLocalApiTests(unittest.TestCase):
             ],
             [{"master_code": "38_02_02", "components": {}}],
         )
-        publish_pdb_snapshot(
-            "dev",
-            "pdb-fixture",
-            "2026-09-02T00:00:00Z",
-            [
-                {"company_item_code": "PDB-1", "item_description_cleaned": "HeraCeram cre active indication", "master_code": "38_02_02"},
-                {"company_item_code": "PDB-2", "item_description_cleaned": "HeraCeram cre active color", "master_code": "38_02_02"},
-                {"company_item_code": "PDB-3", "item_description_cleaned": "HeraCeram indication set", "master_code": "38_02_02"},
-                {"company_item_code": "PDB-4", "item_description_cleaned": "unrelated dental product", "master_code": "38_02_02"},
-            ],
-        )
         app = FastAPI()
         app.include_router(router, prefix="/api")
+        app.include_router(legacy_router, prefix="/api")
         self.client = TestClient(app)
 
     def tearDown(self):
@@ -97,11 +87,11 @@ class CodexLocalApiTests(unittest.TestCase):
 
     def test_search_and_select_all_use_local_snapshot(self):
         search = self.client.post(
-            "/api/codex/search",
+            "/api/mc-code/search",
             json={"environment": "dev", "company": "HERAEUS", "page_size": 25},
         )
         eligible = self.client.post(
-            "/api/codex/bs25ai/eligible",
+            "/api/mc-code/bs25ai/eligible",
             json={"environment": "dev", "company": "HERAEUS"},
         )
 
@@ -109,20 +99,54 @@ class CodexLocalApiTests(unittest.TestCase):
         self.assertEqual(search.json()["total"], 3)
         self.assertEqual(eligible.json()["total"], 1)
 
-        companies = self.client.get("/api/codex/companies?environment=dev")
-        config = self.client.get("/api/codex/config")
+        companies = self.client.get("/api/mc-code/companies?environment=dev")
+        config = self.client.get("/api/mc-code/config")
         self.assertEqual([item["value"] for item in companies.json()], ["HERAEUS"])
         self.assertEqual(config.json()["data_source"], "local_snapshot")
         self.assertTrue(config.json()["pdb_available"]["dev"])
         self.assertTrue(config.json()["bs25ai_mock_mode"])
 
+    def test_legacy_urls_keep_query_and_post_body(self):
+        companies = self.client.get("/api/codex/companies?environment=dev")
+        self.assertEqual(companies.status_code, 200)
+        self.assertEqual([item["value"] for item in companies.json()], ["HERAEUS"])
+        search = self.client.post(
+            "/api/codex/search",
+            json={"environment": "dev", "company": "HERAEUS", "page_size": 25},
+        )
+        self.assertEqual(search.status_code, 200)
+        self.assertEqual(search.json()["total"], 3)
+
+    def test_legacy_snapshot_settings_and_header_remain_usable(self):
+        snapshot_bytes = snapshot_path("dev").read_bytes()
+        settings = {key: value for key, value in os.environ.items() if not key.startswith("MC_CODE_")}
+        settings.update({
+            "CODEX_LOCAL_DATA_DIR": self.temporary.name,
+            "CODEX_RUNTIME_DB": str(Path(self.temporary.name) / "runtime.sqlite3"),
+            "CODEX_SNAPSHOT_TOKEN": "legacy-test-token",
+        })
+        with patch.dict(os.environ, settings, clear=True):
+            published = self.client.put(
+                "/api/codex/snapshot-file?environment=dev",
+                content=snapshot_bytes,
+                headers={"X-Codex-Snapshot-Token": "legacy-test-token"},
+            )
+            denied = self.client.put(
+                "/api/mc-code/snapshot-file?environment=dev",
+                content=snapshot_bytes,
+                headers={"X-Codex-Snapshot-Token": "wrong-token"},
+            )
+        self.assertEqual(published.status_code, 200)
+        self.assertEqual(published.json()["rows"], 3)
+        self.assertEqual(denied.status_code, 401)
+
     def test_snapshot_selection_is_not_eligible_and_can_be_cleared_locally(self):
         before = self.client.post(
-            "/api/codex/bs25ai/eligible",
+            "/api/mc-code/bs25ai/eligible",
             json={"environment": "dev", "company": "HERAEUS"},
         )
         cleared = self.client.post(
-            "/api/codex/bs25/select",
+            "/api/mc-code/bs25/select",
             json={
                 "environment": "dev",
                 "company": "HERAEUS",
@@ -132,7 +156,7 @@ class CodexLocalApiTests(unittest.TestCase):
             },
         )
         after = self.client.post(
-            "/api/codex/bs25ai/eligible",
+            "/api/mc-code/bs25ai/eligible",
             json={"environment": "dev", "company": "HERAEUS"},
         )
 
@@ -143,16 +167,16 @@ class CodexLocalApiTests(unittest.TestCase):
     def test_prebuilt_snapshot_upload_is_authenticated_and_validated(self):
         snapshot_bytes = snapshot_path("dev").read_bytes()
         unauthorized = self.client.put(
-            "/api/codex/snapshot-file?environment=dev",
+            "/api/mc-code/snapshot-file?environment=dev",
             content=snapshot_bytes,
             headers={"Content-Type": "application/octet-stream"},
         )
         published = self.client.put(
-            "/api/codex/snapshot-file?environment=dev",
+            "/api/mc-code/snapshot-file?environment=dev",
             content=snapshot_bytes,
             headers={
                 "Content-Type": "application/octet-stream",
-                "X-Codex-Snapshot-Token": "snapshot-test-token",
+                "X-MC-Code-Snapshot-Token": "snapshot-test-token",
             },
         )
 
@@ -161,24 +185,9 @@ class CodexLocalApiTests(unittest.TestCase):
         self.assertEqual(published.json()["rows"], 3)
         self.assertEqual(published.json()["master_codes"], 1)
 
-    def test_pdb_snapshot_accepts_gzip_stream(self):
-        compressed = gzip.compress(pdb_snapshot_path("dev").read_bytes(), compresslevel=1)
-        published = self.client.put(
-            "/api/codex/pdb-snapshot?environment=dev",
-            content=compressed,
-            headers={
-                "Content-Type": "application/octet-stream",
-                "Content-Encoding": "gzip",
-                "X-Codex-Snapshot-Token": "snapshot-test-token",
-            },
-        )
-
-        self.assertEqual(published.status_code, 200)
-        self.assertEqual(published.json()["rows"], 4)
-
     def test_submit_ai_and_local_selection_contract(self):
         selection = self.client.post(
-            "/api/codex/bs25/select",
+            "/api/mc-code/bs25/select",
             json={
                 "environment": "dev",
                 "company": "HERAEUS",
@@ -191,13 +200,13 @@ class CodexLocalApiTests(unittest.TestCase):
         self.assertTrue(selection.json()["selected"])
 
         no_longer_eligible = self.client.post(
-            "/api/codex/bs25ai/eligible",
+            "/api/mc-code/bs25ai/eligible",
             json={"environment": "dev", "company": "HERAEUS"},
         )
         self.assertEqual(no_longer_eligible.json()["total"], 0)
 
         cleared = self.client.post(
-            "/api/codex/bs25/select",
+            "/api/mc-code/bs25/select",
             json={
                 "environment": "dev",
                 "company": "HERAEUS",
@@ -207,33 +216,31 @@ class CodexLocalApiTests(unittest.TestCase):
             },
         )
         eligible_again = self.client.post(
-            "/api/codex/bs25ai/eligible",
+            "/api/mc-code/bs25ai/eligible",
             json={"environment": "dev", "company": "HERAEUS"},
         )
         self.assertTrue(cleared.json()["selected"])
         self.assertEqual(eligible_again.json()["total"], 1)
 
-        with patch("api.codex.run_bs25ai_job") as runner:
+        with patch("api.mc_code.run_bs25ai_job") as runner:
             response = self.client.post(
-                "/api/codex/bs25ai",
+                "/api/mc-code/bs25ai",
                 json={"environment": "dev", "company": "HERAEUS", "item_codes": ["A1"]},
             )
         self.assertEqual(response.status_code, 202)
         self.assertEqual(response.json()["accepted_item_codes"], ["A1"])
         runner.assert_called_once()
 
-    def test_bs25_runs_against_local_pdb(self):
-        response = self.client.post(
-            "/api/codex/bs25",
-            json={"environment": "dev", "company": "HERAEUS", "item_codes": ["A2"]},
-        )
+    def test_bs25_is_delegated_to_vm04_worker(self):
+        with patch("api.mc_code.run_bs25_batch") as runner:
+            response = self.client.post(
+                "/api/mc-code/bs25",
+                json={"environment": "dev", "company": "HERAEUS", "item_codes": ["A2"]},
+            )
 
         self.assertEqual(response.status_code, 202)
         self.assertEqual(response.json()["accepted_item_codes"], ["A2"])
-        row = CodexSnapshotStore("dev").get_items("HERAEUS", ["A2"])[0]
-        self.assertEqual(row["bs25_status"], "completed")
-        self.assertEqual(row["bs25_proposal_1"]["pdb_ref"], "PDB-1")
-        self.assertEqual(row["bs25_proposal_1"]["retriever_version"], "pdb-bm25-local-v1")
+        runner.assert_called_once_with("dev", "HERAEUS", ["A2"])
 
 
 if __name__ == "__main__":

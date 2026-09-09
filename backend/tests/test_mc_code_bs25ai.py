@@ -5,14 +5,14 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from services.codex_bs25ai import (
+from services.mc_code_bs25ai import (
     Bs25AiWorkerError,
     MockBs25AiWorkerClient,
     run_bs25ai_job,
     run_bs25ai_xhigh,
 )
-from services.codex_local_store import (
-    CodexSnapshotStore,
+from services.mc_code_local_store import (
+    McCodeSnapshotStore,
     RuntimeStore,
     SnapshotValidationError,
     publish_snapshot,
@@ -44,15 +44,15 @@ def _proposal(rank, code, *, exact=False, manufacturer="KULZER"):
     }
 
 
-class CodexBs25AiFlowTests(unittest.TestCase):
+class McCodeBs25AiFlowTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.data_dir = Path(self.temporary.name)
         self.environment_patch = patch.dict(
             os.environ,
             {
-                "CODEX_LOCAL_DATA_DIR": str(self.data_dir),
-                "CODEX_RUNTIME_DB": str(self.data_dir / "runtime.sqlite3"),
+                "MC_CODE_LOCAL_DATA_DIR": str(self.data_dir),
+                "MC_CODE_RUNTIME_DB": str(self.data_dir / "runtime.sqlite3"),
             },
         )
         self.environment_patch.start()
@@ -190,7 +190,7 @@ class CodexBs25AiFlowTests(unittest.TestCase):
         )
 
         job = runtime.get_job("dev", "HERAEUS", "ERROR")
-        rows = CodexSnapshotStore("dev").search("HERAEUS", "light", 0, 25, "ERROR", {})["rows"]
+        rows = McCodeSnapshotStore("dev").search("HERAEUS", "light", 0, 25, "ERROR", {})["rows"]
         self.assertEqual(job["status"], "failed")
         self.assertIsNone(job["result"])
         self.assertEqual(rows[0]["bs25_selected_master_code"], "38_02_04")
@@ -224,7 +224,7 @@ class CodexBs25AiFlowTests(unittest.TestCase):
             [{"master_code": "38_02_02", "components": {}}],
         )
 
-        row = CodexSnapshotStore("dev").search("HERAEUS", "light", 0, 25, "EXACT", {})["rows"][0]
+        row = McCodeSnapshotStore("dev").search("HERAEUS", "light", 0, 25, "EXACT", {})["rows"][0]
         self.assertEqual(row["description"], "updated description")
         self.assertEqual(row["bs25_selected_master_code"], "38_02_02")
 
@@ -239,7 +239,7 @@ class CodexBs25AiFlowTests(unittest.TestCase):
                 [{"master_code": "38_02_02", "components": {}}],
             )
 
-        self.assertEqual(CodexSnapshotStore("dev").metadata()["snapshot_id"], "fixture-v1")
+        self.assertEqual(McCodeSnapshotStore("dev").metadata()["snapshot_id"], "fixture-v1")
 
     def test_runtime_initialization_is_safe_under_parallel_reads(self):
         path = self.data_dir / "parallel-runtime.sqlite3"

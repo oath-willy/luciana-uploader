@@ -6,8 +6,8 @@ from typing import Any, Literal
 
 import requests
 
-from services.codex_coherence import decide_bs25ai_route
-from services.codex_local_store import CodexSnapshotStore, RuntimeStore
+from services.mc_code_coherence import decide_bs25ai_route
+from services.mc_code_local_store import McCodeSnapshotStore, RuntimeStore
 
 
 Bs25AiMode = Literal["low", "xhigh"]
@@ -180,7 +180,7 @@ def run_bs25ai_job(
     *,
     worker: Bs25AiWorkerClient | None = None,
 ) -> None:
-    snapshot = CodexSnapshotStore(environment)  # type: ignore[arg-type]
+    snapshot = McCodeSnapshotStore(environment)  # type: ignore[arg-type]
     runtime = RuntimeStore()
     job = runtime.get_job(environment, company, item_code)
     if not job:
@@ -257,7 +257,7 @@ def run_bs25ai_xhigh(
     *,
     worker: Bs25AiWorkerClient | None = None,
 ) -> None:
-    snapshot = CodexSnapshotStore(environment)  # type: ignore[arg-type]
+    snapshot = McCodeSnapshotStore(environment)  # type: ignore[arg-type]
     runtime = RuntimeStore()
     job = runtime.get_job(environment, company, item_code)
     if not job:
@@ -386,7 +386,7 @@ def _validate_worker_response(
 
 
 def _validate_canonical_result(
-    snapshot: CodexSnapshotStore,
+    snapshot: McCodeSnapshotStore,
     result: dict[str, Any],
     proposals: list[dict[str, Any]],
     mode: Bs25AiMode,

@@ -491,28 +491,28 @@ export default function ServerDataGrid({
             minHeight: 0,
             minWidth: 0,
             maxWidth: "100%",
-            "& .codex-row-locked": {
+            "& .mc-code-row-locked": {
               bgcolor: "action.disabledBackground",
               color: "text.secondary",
             },
-            "& .codex-row-locked:hover": {
+            "& .mc-code-row-locked:hover": {
               bgcolor: "action.disabledBackground",
             },
-            "& .codex-row-locked .MuiDataGrid-cell--pinnedLeft": {
+            "& .mc-code-row-locked .MuiDataGrid-cell--pinnedLeft": {
               bgcolor: "action.disabledBackground",
             },
-            "& .codex-row-locked:hover .MuiDataGrid-cell--pinnedLeft, & .codex-row-locked.Mui-selected .MuiDataGrid-cell--pinnedLeft": {
+            "& .mc-code-row-locked:hover .MuiDataGrid-cell--pinnedLeft, & .mc-code-row-locked.Mui-selected .MuiDataGrid-cell--pinnedLeft": {
               bgcolor: "action.disabledBackground",
             },
-            "& .codex-row-compact .MuiDataGrid-cell": {
+            "& .mc-code-row-compact .MuiDataGrid-cell": {
               alignItems: "flex-start",
               overflow: "hidden",
             },
-            "& .codex-row-compact .MuiDataGrid-cell > *": {
+            "& .mc-code-row-compact .MuiDataGrid-cell > *": {
               maxHeight: "100%",
               overflow: "hidden",
             },
-            "& .codex-row-compact .MuiDataGrid-cell > .MuiStack-root > :not(:first-child), & .codex-row-compact .MuiDataGrid-cell > .MuiBox-root > .MuiStack-root > :not(:first-child)": {
+            "& .mc-code-row-compact .MuiDataGrid-cell > .MuiStack-root > :not(:first-child), & .mc-code-row-compact .MuiDataGrid-cell > .MuiBox-root > .MuiStack-root > :not(:first-child)": {
               display: "none",
             },
           }}

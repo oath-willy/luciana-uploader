@@ -10,9 +10,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Literal
 
+from services.mc_code_settings import mc_code_setting
 
-CodexEnvironmentName = Literal["dev", "prod"]
-CodexView = Literal["light", "full"]
+
+McCodeEnvironmentName = Literal["dev", "prod"]
+McCodeView = Literal["light", "full"]
 MAX_EXTRA_COLUMNS = 12
 _RUNTIME_SCHEMA_LOCK = threading.Lock()
 _RUNTIME_INITIALIZED: set[Path] = set()
@@ -26,8 +28,8 @@ class SnapshotValidationError(ValueError):
     pass
 
 
-def codex_data_dir() -> Path:
-    configured = os.getenv("CODEX_LOCAL_DATA_DIR", "").strip()
+def mc_code_data_dir() -> Path:
+    configured = mc_code_setting("LOCAL_DATA_DIR").strip()
     if configured:
         path = Path(configured).expanduser()
     elif os.getenv("WEBSITE_SITE_NAME") or os.getenv("WEBSITE_INSTANCE_ID"):
@@ -38,13 +40,13 @@ def codex_data_dir() -> Path:
     return path
 
 
-def snapshot_path(environment: CodexEnvironmentName) -> Path:
-    return codex_data_dir() / f"snapshot-{environment}.sqlite3"
+def snapshot_path(environment: McCodeEnvironmentName) -> Path:
+    return mc_code_data_dir() / f"snapshot-{environment}.sqlite3"
 
 
 def runtime_path() -> Path:
-    configured = os.getenv("CODEX_RUNTIME_DB", "").strip()
-    return Path(configured).expanduser() if configured else codex_data_dir() / "runtime.sqlite3"
+    configured = mc_code_setting("RUNTIME_DB").strip()
+    return Path(configured).expanduser() if configured else mc_code_data_dir() / "runtime.sqlite3"
 
 
 def environment_descriptors() -> list[dict[str, Any]]:
@@ -58,14 +60,14 @@ def environment_descriptors() -> list[dict[str, Any]]:
                 "available": path.is_file(),
                 "message": None
                 if path.is_file()
-                else f"Snapshot locale CODEX non disponibile ({path.name})",
+                else f"Snapshot locale MC CODE non disponibile ({path.name})",
             }
         )
     return result
 
 
-class CodexSnapshotStore:
-    def __init__(self, environment: CodexEnvironmentName):
+class McCodeSnapshotStore:
+    def __init__(self, environment: McCodeEnvironmentName):
         self.environment = environment
         self.path = snapshot_path(environment)
 
@@ -98,7 +100,7 @@ class CodexSnapshotStore:
     def search(
         self,
         company: str,
-        view: CodexView,
+        view: McCodeView,
         page: int,
         page_size: int,
         search: str,
@@ -113,7 +115,7 @@ class CodexSnapshotStore:
         }
         unknown = sorted(set(filters) - allowed)
         if unknown:
-            raise ValueError(f"Filtro CODEX non supportato: {unknown[0]}")
+            raise ValueError(f"Filtro MC CODE non supportato: {unknown[0]}")
 
         clauses = ["UPPER(company) = UPPER(?)"]
         parameters: list[Any] = [company.strip()]
@@ -195,7 +197,7 @@ class CodexSnapshotStore:
     def eligible(
         self,
         company: str,
-        view: CodexView,
+        view: McCodeView,
         search: str,
         filters: dict[str, Any],
     ) -> list[dict[str, Any]]:
@@ -253,7 +255,7 @@ class CodexSnapshotStore:
         columns = _loads(row["extra_columns_json"], []) if row else []
         return columns[:MAX_EXTRA_COLUMNS]
 
-    def _deserialize_item(self, row: sqlite3.Row, view: CodexView) -> dict[str, Any]:
+    def _deserialize_item(self, row: sqlite3.Row, view: McCodeView) -> dict[str, Any]:
         result = {
             "id": f'{row["company"]}::{row["item_code"]}',
             "company": row["company"],
@@ -282,7 +284,7 @@ class CodexSnapshotStore:
     def _connect(self):
         if not self.path.is_file():
             raise SnapshotUnavailable(
-                f"Snapshot locale CODEX non disponibile: {self.path}"
+                f"Snapshot locale MC CODE non disponibile: {self.path}"
             )
         connection = sqlite3.connect(f"file:{self.path.as_posix()}?mode=ro", uri=True)
         connection.row_factory = sqlite3.Row
@@ -668,7 +670,7 @@ class RuntimeStore:
 
 
 def publish_snapshot(
-    environment: CodexEnvironmentName,
+    environment: McCodeEnvironmentName,
     snapshot_id: str,
     created_at: str,
     companies: list[dict[str, Any]],
@@ -678,7 +680,7 @@ def publish_snapshot(
     if not snapshot_id.strip():
         raise SnapshotValidationError("snapshot_id obbligatorio")
     if not rows:
-        raise SnapshotValidationError("Lo snapshot CODEX non contiene righe")
+        raise SnapshotValidationError("Lo snapshot MC CODE non contiene righe")
     declared_companies = {
         str(item.get("company") or "").strip().upper() for item in companies
     }
@@ -826,9 +828,9 @@ def publish_snapshot(
 
 
 def validate_and_publish_snapshot_file(
-    environment: CodexEnvironmentName, staged_path: Path
+    environment: McCodeEnvironmentName, staged_path: Path
 ) -> dict[str, Any]:
-    """Validate a prebuilt CODEX SQLite snapshot and atomically make it current."""
+    """Validate a prebuilt MC CODE SQLite snapshot and atomically make it current."""
 
     connection = sqlite3.connect(f"file:{staged_path.as_posix()}?mode=ro", uri=True)
     try:
@@ -839,7 +841,7 @@ def validate_and_publish_snapshot_file(
             )
         }
         if not {"metadata", "companies", "items", "master_codes"}.issubset(tables):
-            raise SnapshotValidationError("File snapshot CODEX con schema non valido")
+            raise SnapshotValidationError("File snapshot MC CODE con schema non valido")
         item_columns = {
             row[1] for row in connection.execute("PRAGMA table_info(items)")
         }
@@ -855,13 +857,13 @@ def validate_and_publish_snapshot_file(
             "selection_status",
         }
         if not required_item_columns.issubset(item_columns):
-            raise SnapshotValidationError("Versione schema snapshot CODEX non supportata")
+            raise SnapshotValidationError("Versione schema snapshot MC CODE non supportata")
         check = connection.execute("PRAGMA quick_check").fetchone()[0]
         if check != "ok":
-            raise SnapshotValidationError(f"SQLite quick_check CODEX fallito: {check}")
+            raise SnapshotValidationError(f"SQLite quick_check MC CODE fallito: {check}")
         metadata = dict(connection.execute("SELECT key,value FROM metadata"))
         if metadata.get("environment") != environment:
-            raise SnapshotValidationError("Environment del file snapshot CODEX non coerente")
+            raise SnapshotValidationError("Environment del file snapshot MC CODE non coerente")
         row_count = int(connection.execute("SELECT COUNT(*) FROM items").fetchone()[0])
         company_count = int(connection.execute("SELECT COUNT(*) FROM companies").fetchone()[0])
         master_code_count = int(
@@ -873,7 +875,7 @@ def validate_and_publish_snapshot_file(
             ).fetchone()[0]
         )
         if row_count <= 0 or company_count <= 0 or master_code_count <= 0 or mismatched:
-            raise SnapshotValidationError("Contenuto snapshot CODEX non coerente")
+            raise SnapshotValidationError("Contenuto snapshot MC CODE non coerente")
     finally:
         connection.close()
 

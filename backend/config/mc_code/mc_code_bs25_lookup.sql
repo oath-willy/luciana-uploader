@@ -1,4 +1,4 @@
--- Dev persistence for the CODEX BS25 candidate-retrieval workflow.
+-- Dev persistence for the MC CODE BS25 candidate-retrieval workflow.
 -- Use the corresponding catalog name when promoting the feature to production.
 CREATE TABLE IF NOT EXISTS research_dev.silver.codex_bs25_lookup (
     company STRING,
@@ -27,4 +27,4 @@ CREATE TABLE IF NOT EXISTS research_dev.silver.codex_bs25_lookup (
     error_message STRING
 )
 USING DELTA
-COMMENT 'Stato persistente e proposte del retriever BS25 della pagina CODEX';
+COMMENT 'Stato persistente e proposte del retriever BS25 della pagina MC CODE';

@@ -1,121 +1,141 @@
 import os
 import secrets
 import tempfile
-import zlib
 from pathlib import Path
 from typing import Any, Dict, Literal
 from uuid import uuid4
 
-from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
-from services.codex_bs25ai import (
+from services.mc_code_bs25ai import (
     bs25ai_mock_mode,
     complete_human_review_goal,
     run_bs25ai_job,
     run_bs25ai_xhigh,
 )
-from services.codex_local_bs25 import run_local_bs25_batch
-from services.codex_local_retrieval import (
-    LocalPdbBm25Retriever,
-    pdb_environment_status,
-    validate_and_publish_pdb_file,
+from services.mc_code_bs25 import (
+    MAX_BS25_BATCH_SIZE,
+    Bs25WorkerClient,
+    Bs25WorkerError,
+    bs25_worker_configured,
+    run_bs25_batch,
 )
-from services.codex_local_store import (
+from services.mc_code_local_store import (
     MAX_EXTRA_COLUMNS,
-    CodexEnvironmentName,
-    CodexSnapshotStore,
+    McCodeEnvironmentName,
+    McCodeSnapshotStore,
     RuntimeStore,
     SnapshotUnavailable,
     SnapshotValidationError,
-    codex_data_dir,
+    mc_code_data_dir,
     environment_descriptors,
     publish_snapshot,
     validate_and_publish_snapshot_file,
 )
-from services.codex_selection import resolve_codex_selection
+from services.mc_code_selection import resolve_mc_code_selection
+from services.mc_code_settings import mc_code_setting
 
 
 router = APIRouter()
+legacy_router = APIRouter()
 
-CodexView = Literal["light", "full"]
+
+@legacy_router.api_route(
+    "/codex/{path:path}", methods=["GET", "POST", "PUT"], include_in_schema=False
+)
+def redirect_legacy_mc_code(path: str, request: Request):
+    url = request.url.replace(path=f"/api/mc-code/{path}")
+    return RedirectResponse(str(url), status_code=307)
+
+
+def read_snapshot_token(
+    x_mc_code_snapshot_token: str | None = Header(default=None),
+    x_codex_snapshot_token: str | None = Header(default=None),
+) -> str | None:
+    return (
+        x_mc_code_snapshot_token
+        if x_mc_code_snapshot_token is not None
+        else x_codex_snapshot_token
+    )
+
+McCodeView = Literal["light", "full"]
 PAGE_SIZE_OPTIONS = {25, 50, 100, 250, 500}
 MAX_BS25AI_BATCH_SIZE = 5000
-MAX_BS25_BATCH_SIZE = 20
-MAX_SNAPSHOT_UPLOAD_BYTES = 5 * 1024 * 1024 * 1024
 
 
-class CodexColumn(BaseModel):
+class McCodeColumn(BaseModel):
     field: str
     header_name: str
     value_type: Literal["string", "number", "boolean", "date"] = "string"
 
 
-class CodexCompany(BaseModel):
+class McCodeCompany(BaseModel):
     value: str
     label: str
     full_view_available: bool
     full_view_message: str | None = None
 
 
-class CodexSearchRequest(BaseModel):
-    environment: CodexEnvironmentName = "dev"
+class McCodeSearchRequest(BaseModel):
+    environment: McCodeEnvironmentName = "dev"
     company: str = Field(min_length=1, max_length=255)
-    view: CodexView = "light"
+    view: McCodeView = "light"
     page: int = 0
     page_size: int = 100
     search: str = ""
     filters: Dict[str, Any] = Field(default_factory=dict)
 
 
-class CodexDetailRequest(BaseModel):
-    environment: CodexEnvironmentName = "dev"
+class McCodeDetailRequest(BaseModel):
+    environment: McCodeEnvironmentName = "dev"
     company: str = Field(min_length=1, max_length=255)
     item_code: str = Field(min_length=1, max_length=255)
 
 
-class CodexItemsRequest(BaseModel):
-    environment: CodexEnvironmentName = "dev"
+class McCodeItemsRequest(BaseModel):
+    environment: McCodeEnvironmentName = "dev"
     company: str = Field(min_length=1, max_length=255)
     item_codes: list[str] = Field(min_length=1, max_length=MAX_BS25AI_BATCH_SIZE)
 
 
-class CodexEligibleRequest(BaseModel):
-    environment: CodexEnvironmentName = "dev"
+class McCodeEligibleRequest(BaseModel):
+    environment: McCodeEnvironmentName = "dev"
     company: str = Field(min_length=1, max_length=255)
-    view: CodexView = "light"
+    view: McCodeView = "light"
     search: str = ""
     filters: Dict[str, Any] = Field(default_factory=dict)
 
 
-class CodexItemActionRequest(BaseModel):
-    environment: CodexEnvironmentName = "dev"
+class McCodeItemActionRequest(BaseModel):
+    environment: McCodeEnvironmentName = "dev"
     company: str = Field(min_length=1, max_length=255)
     item_code: str = Field(min_length=1, max_length=255)
 
 
-class CodexBs25SelectionRequest(CodexItemActionRequest):
+class McCodeBs25SelectionRequest(McCodeItemActionRequest):
     proposal_rank: int | None = Field(default=None, ge=1, le=3)
     clear: bool = False
     selection_request_id: str | None = Field(default=None, min_length=16, max_length=64)
 
 
-class CodexSearchResponse(BaseModel):
+class McCodeSearchResponse(BaseModel):
     rows: list[Dict[str, Any]]
     total: int
-    extra_columns: list[CodexColumn] = Field(default_factory=list, max_length=MAX_EXTRA_COLUMNS)
+    extra_columns: list[McCodeColumn] = Field(default_factory=list, max_length=MAX_EXTRA_COLUMNS)
 
 
-class CodexDetailResponse(BaseModel):
+class McCodeDetailResponse(BaseModel):
     record: Dict[str, Any]
-    extra_columns: list[CodexColumn] = Field(default_factory=list, max_length=MAX_EXTRA_COLUMNS)
+    extra_columns: list[McCodeColumn] = Field(default_factory=list, max_length=MAX_EXTRA_COLUMNS)
 
 
 class SnapshotCompany(BaseModel):
     company: str
     full_view_available: bool = False
     full_view_message: str | None = None
-    extra_columns: list[CodexColumn] = Field(default_factory=list, max_length=MAX_EXTRA_COLUMNS)
+    extra_columns: list[McCodeColumn] = Field(default_factory=list, max_length=MAX_EXTRA_COLUMNS)
 
 
 class SnapshotMasterCode(BaseModel):
@@ -124,7 +144,7 @@ class SnapshotMasterCode(BaseModel):
 
 
 class SnapshotPayload(BaseModel):
-    environment: CodexEnvironmentName
+    environment: McCodeEnvironmentName
     snapshot_id: str = Field(min_length=1, max_length=255)
     created_at: str
     companies: list[SnapshotCompany]
@@ -132,34 +152,35 @@ class SnapshotPayload(BaseModel):
     master_codes: list[SnapshotMasterCode] = Field(min_length=1)
 
 
-@router.get("/codex/config")
-def get_codex_config():
+@router.get("/mc-code/config")
+def get_mc_code_config():
     descriptors = environment_descriptors()
     available = next((item["value"] for item in descriptors if item["available"]), "dev")
-    pdb_available = pdb_environment_status()
+    bs25_available = bs25_worker_configured()
     return {
         "default_environment": available,
         "environments": descriptors,
-        "dataset_name": "local CODEX snapshot",
+        "dataset_name": "local MC CODE snapshot",
         "max_extra_columns": MAX_EXTRA_COLUMNS,
         "fuzzy_lookup_actions_available": False,
         "ai_lookup_actions_available": False,
-        "bs25_actions_available": any(pdb_available.values()),
+        "bs25_actions_available": bs25_available,
         "bs25ai_actions_available": True,
         "lookup_actions_available": False,
         "data_source": "local_snapshot",
-        "pdb_available": pdb_available,
+        "pdb_available": {"dev": bs25_available, "prod": bs25_available},
+        "bs25_source": "lucianavm04",
         "bs25ai_mock_mode": bs25ai_mock_mode(),
     }
 
 
-@router.get("/codex/companies", response_model=list[CodexCompany])
-def get_codex_companies(environment: CodexEnvironmentName = Query(default="dev")):
+@router.get("/mc-code/companies", response_model=list[McCodeCompany])
+def get_mc_code_companies(environment: McCodeEnvironmentName = Query(default="dev")):
     return _snapshot(environment).companies()
 
 
-@router.post("/codex/search", response_model=CodexSearchResponse)
-def search_codex_rows(payload: CodexSearchRequest):
+@router.post("/mc-code/search", response_model=McCodeSearchResponse)
+def search_mc_code_rows(payload: McCodeSearchRequest):
     if payload.page < 0:
         raise HTTPException(status_code=400, detail="La pagina non puo essere negativa")
     if payload.page_size not in PAGE_SIZE_OPTIONS:
@@ -177,25 +198,25 @@ def search_codex_rows(payload: CodexSearchRequest):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.post("/codex/detail", response_model=CodexDetailResponse)
-def get_codex_detail(payload: CodexDetailRequest):
+@router.post("/mc-code/detail", response_model=McCodeDetailResponse)
+def get_mc_code_detail(payload: McCodeDetailRequest):
     detail = _snapshot(payload.environment).detail(payload.company, payload.item_code)
     if detail is None:
-        raise HTTPException(status_code=404, detail="Record CODEX non trovato")
+        raise HTTPException(status_code=404, detail="Record MC CODE non trovato")
     return detail
 
 
-@router.post("/codex/bs25ai/eligible")
-def eligible_bs25ai_rows(payload: CodexEligibleRequest):
+@router.post("/mc-code/bs25ai/eligible")
+def eligible_bs25ai_rows(payload: McCodeEligibleRequest):
     rows = _snapshot(payload.environment).eligible(
         payload.company, payload.view, payload.search, payload.filters
     )
     return {"rows": rows, "total": len(rows)}
 
 
-@router.post("/codex/bs25", status_code=202)
+@router.post("/mc-code/bs25", status_code=202)
 def submit_local_bs25(
-    payload: CodexItemsRequest,
+    payload: McCodeItemsRequest,
     background_tasks: BackgroundTasks,
     request: Request,
 ):
@@ -206,8 +227,8 @@ def submit_local_bs25(
             detail=f"Seleziona al massimo {MAX_BS25_BATCH_SIZE} record per analisi BS25",
         )
     try:
-        LocalPdbBm25Retriever(payload.environment).metadata()
-    except SnapshotUnavailable as exc:
+        Bs25WorkerClient.from_environment()
+    except Bs25WorkerError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     snapshot = _snapshot(payload.environment)
@@ -215,7 +236,7 @@ def submit_local_bs25(
     items_by_code = {item["item_code"]: item for item in items}
     missing = [code for code in item_codes if code not in items_by_code]
     if missing:
-        raise HTTPException(status_code=404, detail=f"Item CODEX non trovato: {missing[0]}")
+        raise HTTPException(status_code=404, detail=f"Item MC CODE non trovato: {missing[0]}")
 
     runtime = RuntimeStore()
     accepted: list[str] = []
@@ -239,7 +260,7 @@ def submit_local_bs25(
             locked.append(item_code)
     if accepted:
         background_tasks.add_task(
-            run_local_bs25_batch,
+            run_bs25_batch,
             payload.environment,
             payload.company,
             accepted,
@@ -247,9 +268,9 @@ def submit_local_bs25(
     return {"accepted_item_codes": accepted, "locked_item_codes": locked}
 
 
-@router.post("/codex/bs25ai", status_code=202)
+@router.post("/mc-code/bs25ai", status_code=202)
 def submit_bs25ai(
-    payload: CodexItemsRequest,
+    payload: McCodeItemsRequest,
     background_tasks: BackgroundTasks,
     request: Request,
 ):
@@ -259,7 +280,7 @@ def submit_bs25ai(
     items_by_code = {item["item_code"]: item for item in items}
     missing = [code for code in item_codes if code not in items_by_code]
     if missing:
-        raise HTTPException(status_code=404, detail=f"Item CODEX non trovato: {missing[0]}")
+        raise HTTPException(status_code=404, detail=f"Item MC CODE non trovato: {missing[0]}")
 
     runtime = RuntimeStore()
     accepted: list[str] = []
@@ -295,8 +316,8 @@ def submit_bs25ai(
     }
 
 
-@router.post("/codex/bs25ai/escalate", status_code=202)
-def escalate_bs25ai(payload: CodexItemActionRequest, background_tasks: BackgroundTasks):
+@router.post("/mc-code/bs25ai/escalate", status_code=202)
+def escalate_bs25ai(payload: McCodeItemActionRequest, background_tasks: BackgroundTasks):
     runtime = RuntimeStore()
     job = runtime.get_job(payload.environment, payload.company, payload.item_code)
     if not job or job.get("status") not in {"completed", "failed", "needs_human_review"}:
@@ -318,8 +339,8 @@ def escalate_bs25ai(payload: CodexItemActionRequest, background_tasks: Backgroun
     return {"status": "accepted", "stage": "sol_xhigh_web"}
 
 
-@router.post("/codex/bs25ai/decline")
-def decline_bs25ai(payload: CodexItemActionRequest, background_tasks: BackgroundTasks):
+@router.post("/mc-code/bs25ai/decline")
+def decline_bs25ai(payload: McCodeItemActionRequest, background_tasks: BackgroundTasks):
     runtime = RuntimeStore()
     job = runtime.get_job(payload.environment, payload.company, payload.item_code)
     if not job:
@@ -339,8 +360,8 @@ def decline_bs25ai(payload: CodexItemActionRequest, background_tasks: Background
     return {"status": "needs_human_review"}
 
 
-@router.post("/codex/bs25ai/retry", status_code=202)
-def retry_bs25ai(payload: CodexItemActionRequest, background_tasks: BackgroundTasks):
+@router.post("/mc-code/bs25ai/retry", status_code=202)
+def retry_bs25ai(payload: McCodeItemActionRequest, background_tasks: BackgroundTasks):
     runtime = RuntimeStore()
     job = runtime.get_job(payload.environment, payload.company, payload.item_code)
     if not job or job.get("status") != "failed":
@@ -357,16 +378,16 @@ def retry_bs25ai(payload: CodexItemActionRequest, background_tasks: BackgroundTa
     return {"status": "accepted", "stage": job.get("stage")}
 
 
-@router.post("/codex/bs25/select")
-def save_codex_selection(payload: CodexBs25SelectionRequest, request: Request):
+@router.post("/mc-code/bs25/select")
+def save_mc_code_selection(payload: McCodeBs25SelectionRequest, request: Request):
     try:
-        selection = resolve_codex_selection(payload.proposal_rank, payload.clear)
+        selection = resolve_mc_code_selection(payload.proposal_rank, payload.clear)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     item = _snapshot(payload.environment).get_items(payload.company, [payload.item_code])
     if not item:
-        raise HTTPException(status_code=404, detail="Item CODEX non trovato")
+        raise HTTPException(status_code=404, detail="Item MC CODE non trovato")
     master_code = None
     if selection.kind == "proposal":
         proposal = item[0].get(f"bs25_proposal_{selection.proposal_rank}") or {}
@@ -390,18 +411,18 @@ def save_codex_selection(payload: CodexBs25SelectionRequest, request: Request):
     )
 
 
-@router.put("/codex/snapshot")
-def ingest_codex_snapshot(
+@router.put("/mc-code/snapshot")
+def ingest_mc_code_snapshot(
     payload: SnapshotPayload,
-    x_codex_snapshot_token: str | None = Header(default=None),
+    x_mc_code_snapshot_token: str | None = Depends(read_snapshot_token),
 ):
-    expected = os.getenv("CODEX_SNAPSHOT_TOKEN", "").strip()
+    expected = mc_code_setting("SNAPSHOT_TOKEN").strip()
     if not expected:
-        raise HTTPException(status_code=503, detail="Ingest snapshot CODEX non configurato")
-    if not x_codex_snapshot_token or not secrets.compare_digest(
-        x_codex_snapshot_token, expected
+        raise HTTPException(status_code=503, detail="Ingest snapshot MC CODE non configurato")
+    if not x_mc_code_snapshot_token or not secrets.compare_digest(
+        x_mc_code_snapshot_token, expected
     ):
-        raise HTTPException(status_code=401, detail="Token snapshot CODEX non valido")
+        raise HTTPException(status_code=401, detail="Token snapshot MC CODE non valido")
     try:
         return publish_snapshot(
             payload.environment,
@@ -415,75 +436,23 @@ def ingest_codex_snapshot(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.put("/codex/pdb-snapshot")
-async def ingest_pdb_snapshot(
+@router.put("/mc-code/snapshot-file")
+async def ingest_mc_code_snapshot_file(
     request: Request,
-    environment: CodexEnvironmentName = Query(default="dev"),
-    x_codex_snapshot_token: str | None = Header(default=None),
-):
-    """Accept a prebuilt SQLite index without loading the PDB into app memory."""
-    expected = os.getenv("CODEX_SNAPSHOT_TOKEN", "").strip()
-    if not expected:
-        raise HTTPException(status_code=503, detail="Ingest snapshot CODEX non configurato")
-    if not x_codex_snapshot_token or not secrets.compare_digest(
-        x_codex_snapshot_token, expected
-    ):
-        raise HTTPException(status_code=401, detail="Token snapshot CODEX non valido")
-
-    data_dir = codex_data_dir()
-    data_dir.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary_name = tempfile.mkstemp(
-        prefix=f".pdb-{environment}-upload-", suffix=".sqlite3", dir=data_dir
-    )
-    os.close(descriptor)
-    staged = Path(temporary_name)
-    try:
-        content_encoding = request.headers.get("content-encoding", "").strip().lower()
-        if content_encoding not in {"", "identity", "gzip"}:
-            raise HTTPException(status_code=415, detail="Content-Encoding snapshot non supportato")
-        decompressor = (
-            zlib.decompressobj(16 + zlib.MAX_WBITS) if content_encoding == "gzip" else None
-        )
-        written = 0
-        with staged.open("wb") as handle:
-            async for chunk in request.stream():
-                decoded = decompressor.decompress(chunk) if decompressor else chunk
-                written += len(decoded)
-                if written > MAX_SNAPSHOT_UPLOAD_BYTES:
-                    raise HTTPException(status_code=413, detail="Snapshot PDB troppo grande")
-                handle.write(decoded)
-            if decompressor:
-                decoded = decompressor.flush()
-                written += len(decoded)
-                if written > MAX_SNAPSHOT_UPLOAD_BYTES:
-                    raise HTTPException(status_code=413, detail="Snapshot PDB troppo grande")
-                handle.write(decoded)
-        return validate_and_publish_pdb_file(environment, staged)
-    except zlib.error as exc:
-        raise HTTPException(status_code=400, detail="Snapshot PDB gzip non valido") from exc
-    except SnapshotValidationError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    finally:
-        staged.unlink(missing_ok=True)
-
-
-@router.put("/codex/snapshot-file")
-async def ingest_codex_snapshot_file(
-    request: Request,
-    environment: CodexEnvironmentName = Query(default="dev"),
-    x_codex_snapshot_token: str | None = Header(default=None),
+    environment: McCodeEnvironmentName = Query(default="dev"),
+    x_mc_code_snapshot_token: str | None = Depends(read_snapshot_token),
 ):
     """Accept a prebuilt SQLite snapshot for bootstrap and disaster recovery."""
 
-    expected = os.getenv("CODEX_SNAPSHOT_TOKEN", "").strip()
+    expected = mc_code_setting("SNAPSHOT_TOKEN").strip()
     if not expected:
-        raise HTTPException(status_code=503, detail="Ingest snapshot CODEX non configurato")
-    if not x_codex_snapshot_token or not secrets.compare_digest(
-        x_codex_snapshot_token, expected
+        raise HTTPException(status_code=503, detail="Ingest snapshot MC CODE non configurato")
+    if not x_mc_code_snapshot_token or not secrets.compare_digest(
+        x_mc_code_snapshot_token, expected
     ):
-        raise HTTPException(status_code=401, detail="Token snapshot CODEX non valido")
+        raise HTTPException(status_code=401, detail="Token snapshot MC CODE non valido")
 
-    data_dir = codex_data_dir()
+    data_dir = mc_code_data_dir()
     data_dir.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
         prefix=f".snapshot-{environment}-upload-", suffix=".sqlite3", dir=data_dir
@@ -501,26 +470,18 @@ async def ingest_codex_snapshot_file(
         staged.unlink(missing_ok=True)
 
 
-@router.get("/codex/snapshot/status")
-def codex_snapshot_status(environment: CodexEnvironmentName = Query(default="dev")):
+@router.get("/mc-code/snapshot/status")
+def mc_code_snapshot_status(environment: McCodeEnvironmentName = Query(default="dev")):
     store = _snapshot(environment)
     return {"environment": environment, **store.metadata()}
 
 
-@router.get("/codex/pdb-snapshot/status")
-def codex_pdb_snapshot_status(environment: CodexEnvironmentName = Query(default="dev")):
-    try:
-        return {"environment": environment, **LocalPdbBm25Retriever(environment).metadata()}
-    except SnapshotUnavailable as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-
-def _snapshot(environment: CodexEnvironmentName) -> CodexSnapshotStore:
-    store = CodexSnapshotStore(environment)
+def _snapshot(environment: McCodeEnvironmentName) -> McCodeSnapshotStore:
+    store = McCodeSnapshotStore(environment)
     if not store.path.is_file():
         raise HTTPException(
             status_code=503,
-            detail=f"Snapshot locale CODEX non disponibile: {store.path.name}",
+            detail=f"Snapshot locale MC CODE non disponibile: {store.path.name}",
         )
     try:
         return store

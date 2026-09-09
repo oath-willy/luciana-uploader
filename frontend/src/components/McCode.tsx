@@ -39,32 +39,32 @@ import ServerDataGrid, {
   ServerGridResult,
 } from "./common/ServerDataGrid";
 
-type CodexView = "light" | "full";
-type CodexEnvironmentName = "dev" | "prod";
+type McCodeView = "light" | "full";
+type McCodeEnvironmentName = "dev" | "prod";
 
-type CodexEnvironment = {
-  value: CodexEnvironmentName;
+type McCodeEnvironment = {
+  value: McCodeEnvironmentName;
   label: string;
   available: boolean;
   message?: string | null;
 };
 
-type CodexCompany = {
+type McCodeCompany = {
   value: string;
   label: string;
   full_view_available: boolean;
   full_view_message?: string | null;
 };
 
-type CodexColumn = {
+type McCodeColumn = {
   field: string;
   header_name: string;
   value_type: "string" | "number" | "boolean" | "date";
 };
 
-type CodexConfig = {
-  default_environment: CodexEnvironmentName;
-  environments: CodexEnvironment[];
+type McCodeConfig = {
+  default_environment: McCodeEnvironmentName;
+  environments: McCodeEnvironment[];
   dataset_name: string;
   max_extra_columns: number;
   lookup_actions_available: boolean;
@@ -73,8 +73,9 @@ type CodexConfig = {
   bs25_actions_available?: boolean;
   bs25ai_actions_available?: boolean;
   data_source?: string;
-  pdb_available?: Record<CodexEnvironmentName, boolean>;
+  pdb_available?: Record<McCodeEnvironmentName, boolean>;
   bs25ai_mock_mode?: boolean;
+  bs25_source?: string;
   mapping_source?: {
     repository: string;
     branch: string;
@@ -83,13 +84,13 @@ type CodexConfig = {
   };
 };
 
-type CodexSearchResponse = ServerGridResult & {
-  extra_columns?: CodexColumn[];
+type McCodeSearchResponse = ServerGridResult & {
+  extra_columns?: McCodeColumn[];
 };
 
-type CodexDetailResponse = {
+type McCodeDetailResponse = {
   record: Record<string, any>;
-  extra_columns: CodexColumn[];
+  extra_columns: McCodeColumn[];
 };
 
 type Bs25Proposal = {
@@ -115,7 +116,7 @@ type Bs25Draft = {
 };
 
 type PendingBs25Selection = {
-  environment: CodexEnvironmentName;
+  environment: McCodeEnvironmentName;
   company: string;
   itemCode: string;
   companyItemCode: string;
@@ -139,16 +140,28 @@ type Bs25AiResult = {
 
 const backendBaseUrl = process.env.REACT_APP_BACKEND_URL || "";
 const MAX_EXTRA_COLUMNS = 12;
-const BS25_SELECTION_OUTBOX_KEY = "codex.bs25.selection-outbox.v1";
-const BS25_DRAFTS_KEY = "codex.bs25.drafts.v1";
-const CODEX_FROZEN_COLUMNS = [
+const BS25_SELECTION_OUTBOX_KEY = "mc-code.bs25.selection-outbox.v1";
+const BS25_DRAFTS_KEY = "mc-code.bs25.drafts.v1";
+
+function readBs25Storage(key: string): string | null {
+  const value = window.localStorage.getItem(key);
+  if (value !== null) return value;
+  const legacyKey = key.replace(/^mc-code\./, "codex.");
+  const legacyValue = window.localStorage.getItem(legacyKey);
+  if (legacyValue !== null) {
+    window.localStorage.setItem(key, legacyValue);
+    window.localStorage.removeItem(legacyKey);
+  }
+  return legacyValue;
+}
+const MC_CODE_FROZEN_COLUMNS = [
   { field: "__check__" },
   { field: "company_item_code" },
   { field: "description" },
 ];
 
 function bs25SelectionKey(
-  environment: CodexEnvironmentName,
+  environment: McCodeEnvironmentName,
   company: string,
   itemCode: string
 ) {
@@ -167,7 +180,7 @@ function loadPendingBs25Selections(): Record<string, PendingBs25Selection> {
   }
   try {
     const parsed = JSON.parse(
-      window.localStorage.getItem(BS25_SELECTION_OUTBOX_KEY) || "{}"
+      readBs25Storage(BS25_SELECTION_OUTBOX_KEY) || "{}"
     );
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       return {};
@@ -197,7 +210,7 @@ function loadBs25Drafts(): Record<string, Bs25Draft> {
     return {};
   }
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(BS25_DRAFTS_KEY) || "{}");
+    const parsed = JSON.parse(readBs25Storage(BS25_DRAFTS_KEY) || "{}");
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       return {};
     }
@@ -309,7 +322,7 @@ const lightColumns: GridColDef[] = [
   },
 ];
 
-const emptyConfig: CodexConfig = {
+const emptyConfig: McCodeConfig = {
   default_environment: "dev",
   environments: [],
   dataset_name: "",
@@ -321,7 +334,7 @@ const emptyConfig: CodexConfig = {
   bs25ai_actions_available: false,
 };
 
-function toGridColumn(column: CodexColumn): GridColDef {
+function toGridColumn(column: McCodeColumn): GridColDef {
   return {
     field: column.field,
     headerName: column.header_name,
@@ -334,7 +347,7 @@ function toGridColumn(column: CodexColumn): GridColDef {
   };
 }
 
-function codexRowId(row: Record<string, any>) {
+function mc_codeRowId(row: Record<string, any>) {
   return row.id;
 }
 
@@ -343,15 +356,15 @@ async function responseError(response: Response, fallback: string) {
   return typeof data?.detail === "string" ? data.detail : fallback;
 }
 
-export default function Codex() {
-  const [view, setView] = useState<CodexView>("light");
+export default function McCode() {
+  const [view, setView] = useState<McCodeView>("light");
   const [environment, setEnvironment] =
-    useState<CodexEnvironmentName>("dev");
-  const [config, setConfig] = useState<CodexConfig>(emptyConfig);
-  const [companies, setCompanies] = useState<CodexCompany[]>([]);
+    useState<McCodeEnvironmentName>("dev");
+  const [config, setConfig] = useState<McCodeConfig>(emptyConfig);
+  const [companies, setCompanies] = useState<McCodeCompany[]>([]);
   const [selectedCompany, setSelectedCompany] =
-    useState<CodexCompany | null>(null);
-  const [extraColumns, setExtraColumns] = useState<CodexColumn[]>([]);
+    useState<McCodeCompany | null>(null);
+  const [extraColumns, setExtraColumns] = useState<McCodeColumn[]>([]);
   const [selectedRows, setSelectedRows] = useState<Record<string, any>[]>([]);
   const [visibleRows, setVisibleRows] = useState<Record<string, any>[]>([]);
   const [refreshToken, setRefreshToken] = useState(0);
@@ -383,7 +396,7 @@ export default function Codex() {
   const [actionError, setActionError] = useState("");
   const [actionMessage, setActionMessage] = useState("");
   const [detailRow, setDetailRow] = useState<Record<string, any> | null>(null);
-  const [detailColumns, setDetailColumns] = useState<CodexColumn[]>([]);
+  const [detailColumns, setDetailColumns] = useState<McCodeColumn[]>([]);
   const [loadingConfig, setLoadingConfig] = useState(true);
   const [loadingCompanies, setLoadingCompanies] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -406,19 +419,19 @@ export default function Codex() {
     let active = true;
     setLoadingConfig(true);
 
-    fetch(`${backendBaseUrl}/api/codex/config`)
+    fetch(`${backendBaseUrl}/api/mc-code/config`)
       .then(async (response) => {
         if (!response.ok) {
           throw new Error(
             await responseError(
               response,
-              "Impossibile caricare la configurazione CODEX"
+              "Impossibile caricare la configurazione MC CODE"
             )
           );
         }
         return response.json();
       })
-      .then((data: CodexConfig) => {
+      .then((data: McCodeConfig) => {
         if (active) {
           setConfig(data);
           setEnvironment(data.default_environment || "dev");
@@ -426,7 +439,7 @@ export default function Codex() {
       })
       .catch((error) => {
         if (active) {
-          setSetupError(error.message || "Errore inizializzazione CODEX");
+          setSetupError(error.message || "Errore inizializzazione MC CODE");
         }
       })
       .finally(() => {
@@ -464,7 +477,7 @@ export default function Codex() {
 
     setLoadingCompanies(true);
     const params = new URLSearchParams({ environment });
-    fetch(`${backendBaseUrl}/api/codex/companies?${params.toString()}`)
+    fetch(`${backendBaseUrl}/api/mc-code/companies?${params.toString()}`)
       .then(async (response) => {
         if (!response.ok) {
           throw new Error(
@@ -521,7 +534,7 @@ export default function Codex() {
       });
 
       try {
-        const response = await fetch(`${backendBaseUrl}/api/codex/bs25/select`, {
+        const response = await fetch(`${backendBaseUrl}/api/mc-code/bs25/select`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -700,7 +713,7 @@ export default function Codex() {
       setActionError("");
       setActionMessage("");
       try {
-        const response = await fetch(`${backendBaseUrl}/api/codex/bs25ai/${action}`, {
+        const response = await fetch(`${backendBaseUrl}/api/mc-code/bs25ai/${action}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -879,7 +892,7 @@ export default function Codex() {
         return { rows: [], total: 0 };
       }
 
-      const response = await fetch(`${backendBaseUrl}/api/codex/search`, {
+      const response = await fetch(`${backendBaseUrl}/api/mc-code/search`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -895,11 +908,11 @@ export default function Codex() {
 
       if (!response.ok) {
         throw new Error(
-          await responseError(response, "Impossibile caricare i record CODEX")
+          await responseError(response, "Impossibile caricare i record MC CODE")
         );
       }
 
-      const data: CodexSearchResponse = await response.json();
+      const data: McCodeSearchResponse = await response.json();
       setExtraColumns(
         (data.extra_columns || []).slice(
           0,
@@ -1088,7 +1101,7 @@ export default function Codex() {
     setActionError("");
     setActionMessage("");
     try {
-      const response = await fetch(`${backendBaseUrl}/api/codex/bs25`, {
+      const response = await fetch(`${backendBaseUrl}/api/mc-code/bs25`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1098,17 +1111,17 @@ export default function Codex() {
         }),
       });
       if (!response.ok) {
-        throw new Error(await responseError(response, "Impossibile avviare BS25 locale"));
+        throw new Error(await responseError(response, "Impossibile avviare BS25"));
       }
       const result = await response.json();
       const accepted = result.accepted_item_codes?.length || 0;
-      setActionMessage(`${accepted} record inviati al BS25 locale`);
+      setActionMessage(`${accepted} record inviati al BS25 su lucianavm04`);
       setSelectedRows([]);
       setExternalSelection(undefined);
       setSelectionResetToken((current) => current + 1);
       setRefreshToken((current) => current + 1);
     } catch (error: any) {
-      setActionError(error.message || "Errore avvio BS25 locale");
+      setActionError(error.message || "Errore avvio BS25");
     } finally {
       setBs25Busy(false);
     }
@@ -1122,7 +1135,7 @@ export default function Codex() {
     setActionError("");
     setActionMessage("");
     try {
-      const response = await fetch(`${backendBaseUrl}/api/codex/bs25ai`, {
+      const response = await fetch(`${backendBaseUrl}/api/mc-code/bs25ai`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1162,7 +1175,7 @@ export default function Codex() {
     setSelectAllBusy(true);
     setActionError("");
     try {
-      const response = await fetch(`${backendBaseUrl}/api/codex/bs25ai/eligible`, {
+      const response = await fetch(`${backendBaseUrl}/api/mc-code/bs25ai/eligible`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1201,7 +1214,7 @@ export default function Codex() {
       setDetailRow(null);
 
       try {
-        const response = await fetch(`${backendBaseUrl}/api/codex/detail`, {
+        const response = await fetch(`${backendBaseUrl}/api/mc-code/detail`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1216,7 +1229,7 @@ export default function Codex() {
           );
         }
 
-        const detail: CodexDetailResponse = await response.json();
+        const detail: McCodeDetailResponse = await response.json();
         setDetailRow(detail.record);
         setDetailColumns(detail.extra_columns || []);
       } catch (error: any) {
@@ -1228,7 +1241,7 @@ export default function Codex() {
     [environment, selectedCompany, view]
   );
 
-  const changeView = (_: React.MouseEvent<HTMLElement>, nextView: CodexView | null) => {
+  const changeView = (_: React.MouseEvent<HTMLElement>, nextView: McCodeView | null) => {
     if (!nextView) {
       return;
     }
@@ -1255,7 +1268,7 @@ export default function Codex() {
     (config.pdb_available?.[environment] ?? true);
   const bs25Disabled = !bs25Available || bs25SelectedRows.length === 0 || bs25Busy;
   const bs25Tooltip = !bs25Available
-    ? "Snapshot PDB locale non disponibile"
+    ? "Servizio BS25 su lucianavm04 non disponibile"
     : bs25SelectedRows.length === 0
       ? "Seleziona almeno un record senza proposte BS25"
       : "";
@@ -1266,14 +1279,14 @@ export default function Codex() {
   const toolbarLeft = (
     <>
       <FormControl size="small" sx={{ minWidth: 130 }}>
-        <InputLabel id="codex-environment-label">Environment</InputLabel>
+        <InputLabel id="mc-code-environment-label">Environment</InputLabel>
         <Select
-          labelId="codex-environment-label"
+          labelId="mc-code-environment-label"
           label="Environment"
           value={environment}
           disabled={loadingConfig}
           onChange={(event) =>
-            setEnvironment(event.target.value as CodexEnvironmentName)
+            setEnvironment(event.target.value as McCodeEnvironmentName)
           }
         >
           {config.environments.map((item) => (
@@ -1325,7 +1338,7 @@ export default function Codex() {
         size="small"
         value={view}
         onChange={changeView}
-        aria-label="Visualizzazione CODEX"
+        aria-label="Visualizzazione MC CODE"
       >
         <ToggleButton value="light">Light</ToggleButton>
         <ToggleButton value="full">Full</ToggleButton>
@@ -1531,16 +1544,16 @@ export default function Codex() {
       >
         <ServerDataGrid
           key={`${environment}-${selectedCompany?.value || "none"}-${view}`}
-          title="CODEX"
+          title="MC CODE"
           columns={columns}
           fetchRows={fetchRows}
-          getRowId={codexRowId}
+          getRowId={mc_codeRowId}
           pageSizeOptions={[25, 50, 100, 250, 500]}
           defaultPageSize={100}
           filterFields={filterFields}
           toolbarLeft={toolbarLeft}
           checkboxSelection
-          frozenColumns={CODEX_FROZEN_COLUMNS}
+          frozenColumns={MC_CODE_FROZEN_COLUMNS}
           selectionHeaderAction={
             <Tooltip
               title={compactRows ? "Espandi tutti i record" : "Compatta tutti i record"}
@@ -1637,10 +1650,10 @@ export default function Codex() {
               params.row.bs25_selection_status === "saving";
             return [
               lookupRunning || aiRunning || selectionSaving
-                ? "codex-row-locked"
+                ? "mc-code-row-locked"
                 : "",
               compactRows && !expandedCompactRows.has(params.id)
-                ? "codex-row-compact"
+                ? "mc-code-row-compact"
                 : "",
             ]
               .filter(Boolean)
@@ -1665,7 +1678,7 @@ export default function Codex() {
           </Paper>
         )}
         {detailRow && !loadingDetail && (
-          <CodexDetailPanel
+          <McCodeDetailPanel
             row={detailRow}
             columns={detailColumns}
             onClose={() => setDetailRow(null)}
@@ -1985,13 +1998,13 @@ function ProposalCell({
   );
 }
 
-function CodexDetailPanel({
+function McCodeDetailPanel({
   row,
   columns,
   onClose,
 }: {
   row: Record<string, any>;
-  columns: CodexColumn[];
+  columns: McCodeColumn[];
   onClose: () => void;
 }) {
   const labels = useMemo(
