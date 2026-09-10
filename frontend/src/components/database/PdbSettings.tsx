@@ -149,6 +149,7 @@ export default function PdbSettings() {
       {
         label: "Documenti BS25",
         value: formatNumber(job?.document_count),
+        note: "Righe del PDB effettivamente indicizzate: hanno un riferimento, una descrizione utilizzabile e un Master Code completo.",
       },
     ],
     [job?.document_count, job?.row_count, status?.file]
@@ -224,6 +225,11 @@ export default function PdbSettings() {
                 <Text fw={700} size="sm" mt={5} truncate="end">
                   {metric.value}
                 </Text>
+                {metric.note && (
+                  <Text size="xs" c="dimmed" mt={6} lh={1.35}>
+                    {metric.note}
+                  </Text>
+                )}
               </Card>
             ))}
           </SimpleGrid>
