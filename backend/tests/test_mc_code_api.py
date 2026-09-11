@@ -104,6 +104,7 @@ class McCodeLocalApiTests(unittest.TestCase):
         self.assertEqual([item["value"] for item in companies.json()], ["HERAEUS"])
         self.assertEqual(config.json()["data_source"], "local_snapshot")
         self.assertTrue(config.json()["pdb_available"]["dev"])
+        self.assertTrue(config.json()["bs23_v2_actions_available"])
         self.assertTrue(config.json()["bs25ai_mock_mode"])
 
     def test_legacy_urls_keep_query_and_post_body(self):
@@ -241,6 +242,25 @@ class McCodeLocalApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 202)
         self.assertEqual(response.json()["accepted_item_codes"], ["A2"])
         runner.assert_called_once_with("dev", "HERAEUS", ["A2"])
+
+    def test_bs23_v2_is_delegated_to_vm04_and_reuses_bs25_storage(self):
+        with patch("api.mc_code.run_bs23_v2_batch") as runner:
+            response = self.client.post(
+                "/api/mc-code/bs23-v2",
+                json={"environment": "dev", "company": "HERAEUS", "item_codes": ["A2"]},
+            )
+
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(response.json()["accepted_item_codes"], ["A2"])
+        runner.assert_called_once_with("dev", "HERAEUS", ["A2"])
+
+        locked = self.client.post(
+            "/api/mc-code/bs23-v2",
+            json={"environment": "dev", "company": "HERAEUS", "item_codes": ["A1"]},
+        )
+        self.assertEqual(locked.status_code, 202)
+        self.assertEqual(locked.json()["accepted_item_codes"], [])
+        self.assertEqual(locked.json()["locked_item_codes"], ["A1"])
 
 
 if __name__ == "__main__":

@@ -4,7 +4,12 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from services.mc_code_bs25 import Bs25WorkerClient, run_bs25_batch
+from services.mc_code_bs25 import (
+    Bs23V2WorkerClient,
+    Bs25WorkerClient,
+    run_bs23_v2_batch,
+    run_bs25_batch,
+)
 from services.mc_code_local_store import McCodeSnapshotStore, RuntimeStore, publish_snapshot
 
 
@@ -29,6 +34,10 @@ class _FakeRetriever:
             for rank in (1, 2, 3)
         ]
         return {str(items[0]["item_code"]): proposals}
+
+
+class _FakeV2Retriever(_FakeRetriever):
+    retriever_version = "pdb-coding-proposals-v2"
 
 
 class McCodeBs25WorkerTests(unittest.TestCase):
@@ -79,6 +88,15 @@ class McCodeBs25WorkerTests(unittest.TestCase):
             row["bs25_proposal_1"]["retriever_version"], "pdb-bm25-vm04-v1"
         )
 
+    def test_v2_result_reuses_the_same_three_runtime_columns(self):
+        retriever = _FakeV2Retriever()
+        run_bs23_v2_batch("dev", "HERAEUS", ["A2"], retriever=retriever)
+
+        row = McCodeSnapshotStore("dev").get_items("HERAEUS", ["A2"])[0]
+        self.assertEqual(row["bs25_status"], "completed")
+        self.assertEqual(row["bs25_retriever_version"], "pdb-coding-proposals-v2")
+        self.assertEqual(row["bs25_proposal_1"]["pdb_ref"], "PDB-1")
+
     @patch("services.mc_code_bs25.requests.post")
     def test_client_sends_extensible_contract_and_validates_top_three(self, post: Mock):
         post.return_value.ok = True
@@ -121,6 +139,38 @@ class McCodeBs25WorkerTests(unittest.TestCase):
         self.assertEqual(sent["description"], "description")
         self.assertEqual(sent["extra"], {"future_parameter": "value"})
         self.assertEqual(len(result["A2"]), 3)
+
+    @patch("services.mc_code_bs25.requests.post")
+    def test_v2_client_uses_dedicated_worker_endpoint(self, post: Mock):
+        post.return_value.ok = True
+        post.return_value.json.return_value = {
+            "retriever_version": "pdb-coding-proposals-v2",
+            "results": [
+                {
+                    "company": "HERAEUS",
+                    "item_code": "A2",
+                    "proposals": [
+                        {
+                            "identity_rank": rank,
+                            "identity_score": 1 / rank,
+                            "exact_match": rank == 1,
+                            "pdb_ref": f"PDB-{rank}",
+                            "pdb_description": f"proposal {rank}",
+                            "master_code": "38_02_02",
+                            "brand": "HERACERAM",
+                        }
+                        for rank in (1, 2, 3)
+                    ],
+                }
+            ],
+        }
+
+        result = Bs23V2WorkerClient("http://vm04.test:8094", "token").retrieve(
+            [{"company": "HERAEUS", "item_code": "A2", "description": "description"}]
+        )
+
+        self.assertEqual(post.call_args.args[0], "http://vm04.test:8094/v1/bs23-v2")
+        self.assertEqual(result["A2"][0]["brand"], "HERACERAM")
 
 
 if __name__ == "__main__":

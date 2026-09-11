@@ -71,6 +71,7 @@ type McCodeConfig = {
   fuzzy_lookup_actions_available?: boolean;
   ai_lookup_actions_available?: boolean;
   bs25_actions_available?: boolean;
+  bs23_v2_actions_available?: boolean;
   bs25ai_actions_available?: boolean;
   data_source?: string;
   pdb_available?: Record<McCodeEnvironmentName, boolean>;
@@ -101,10 +102,21 @@ type Bs25Proposal = {
   pdb_description: string;
   master_code?: string | null;
   manufacturer?: string | null;
+  brand?: string | null;
   father_name?: string | null;
   pack?: string | null;
+  inner_count?: string | null;
+  inner_qty?: string | null;
+  pack_measure_unit?: string | null;
   feature?: string | null;
   measure?: string | null;
+  extra?: string | null;
+  source_evidence?: Array<{
+    field: string;
+    source_field: string;
+    source_span: string;
+  }>;
+  retriever_version?: string;
 };
 
 type Bs25SelectionKind = "proposal" | "clear";
@@ -362,6 +374,7 @@ const emptyConfig: McCodeConfig = {
   fuzzy_lookup_actions_available: false,
   ai_lookup_actions_available: false,
   bs25_actions_available: false,
+  bs23_v2_actions_available: false,
   bs25ai_actions_available: false,
 };
 
@@ -402,6 +415,7 @@ export default function McCode() {
   const [selectionResetToken, setSelectionResetToken] = useState(0);
   const [bs25AiBusy, setBs25AiBusy] = useState(false);
   const [bs25Busy, setBs25Busy] = useState(false);
+  const [bs23V2Busy, setBs23V2Busy] = useState(false);
   const [selectAllBusy, setSelectAllBusy] = useState(false);
   const [compactRows, setCompactRows] = useState(true);
   const [expandedCompactRows, setExpandedCompactRows] = useState<
@@ -1158,6 +1172,42 @@ export default function McCode() {
     }
   }, [bs25SelectedRows, environment, selectedCompany]);
 
+  const handleBs23V2 = useCallback(async () => {
+    if (!selectedCompany || bs25SelectedRows.length === 0) {
+      return;
+    }
+    setBs23V2Busy(true);
+    setActionError("");
+    setActionMessage("");
+    try {
+      const response = await fetch(`${backendBaseUrl}/api/mc-code/bs23-v2`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          environment,
+          company: selectedCompany.value,
+          item_codes: bs25SelectedRows.map((row) => row.item_code),
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(
+          await responseError(response, "Impossibile avviare BS23_v2")
+        );
+      }
+      const result = await response.json();
+      const accepted = result.accepted_item_codes?.length || 0;
+      setActionMessage(`${accepted} record inviati al BS23_v2 su lucianavm04`);
+      setSelectedRows([]);
+      setExternalSelection(undefined);
+      setSelectionResetToken((current) => current + 1);
+      setRefreshToken((current) => current + 1);
+    } catch (error: any) {
+      setActionError(error.message || "Errore avvio BS23_v2");
+    } finally {
+      setBs23V2Busy(false);
+    }
+  }, [bs25SelectedRows, environment, selectedCompany]);
+
   const handleBs25Ai = useCallback(async () => {
     if (!selectedCompany || bs25AiSelectedRows.length === 0) {
       return;
@@ -1297,9 +1347,21 @@ export default function McCode() {
   const bs25Available =
     (config.bs25_actions_available ?? false) &&
     (config.pdb_available?.[environment] ?? true);
-  const bs25Disabled = !bs25Available || bs25SelectedRows.length === 0 || bs25Busy;
+  const bs23V2Available =
+    (config.bs23_v2_actions_available ?? false) &&
+    (config.pdb_available?.[environment] ?? true);
+  const deterministicLookupBusy = bs25Busy || bs23V2Busy;
+  const bs25Disabled =
+    !bs25Available || bs25SelectedRows.length === 0 || deterministicLookupBusy;
+  const bs23V2Disabled =
+    !bs23V2Available || bs25SelectedRows.length === 0 || deterministicLookupBusy;
   const bs25Tooltip = !bs25Available
     ? "Servizio BS25 su lucianavm04 non disponibile"
+    : bs25SelectedRows.length === 0
+      ? "Seleziona almeno un record senza proposte BS25"
+      : "";
+  const bs23V2Tooltip = !bs23V2Available
+    ? "Servizio BS23_v2 su lucianavm04 non disponibile"
     : bs25SelectedRows.length === 0
       ? "Seleziona almeno un record senza proposte BS25"
       : "";
@@ -1419,6 +1481,26 @@ export default function McCode() {
               {bs25Busy
                 ? "Elaborazione..."
                 : `BS25${bs25SelectedRows.length ? ` (${bs25SelectedRows.length})` : ""}`}
+            </Button>
+          </span>
+        </Tooltip>
+        <Tooltip title={bs23V2Tooltip} disableHoverListener={!bs23V2Tooltip}>
+          <span>
+            <Button
+              variant="outlined"
+              startIcon={
+                bs23V2Busy ? (
+                  <CircularProgress size={16} />
+                ) : (
+                  <ScanSearch size={17} />
+                )
+              }
+              disabled={bs23V2Disabled}
+              onClick={handleBs23V2}
+            >
+              {bs23V2Busy
+                ? "Elaborazione..."
+                : `BS23_v2${bs25SelectedRows.length ? ` (${bs25SelectedRows.length})` : ""}`}
             </Button>
           </span>
         </Tooltip>
@@ -1982,11 +2064,24 @@ function ProposalCell({
   const selected =
     Number(optimisticRank ?? row.bs25_selected_proposal_rank) === rank;
   const details = [
-    proposal.manufacturer,
-    proposal.father_name,
-    proposal.pack,
-    proposal.measure,
+    proposal.brand && `Brand: ${proposal.brand}`,
+    proposal.manufacturer && `Produttore: ${proposal.manufacturer}`,
+    proposal.father_name && `Father name: ${proposal.father_name}`,
+    proposal.pack && `Pack: ${proposal.pack}`,
+    proposal.measure && `Misura: ${proposal.measure}`,
   ].filter(Boolean);
+  const quantity = [
+    proposal.inner_count && `conteggio ${proposal.inner_count}`,
+    proposal.inner_qty && `quantita ${proposal.inner_qty}`,
+    proposal.pack_measure_unit,
+  ].filter(Boolean);
+  const evidenceSpans = Array.from(
+    new Set(
+      (proposal.source_evidence || [])
+        .map((item) => item.source_span?.trim())
+        .filter(Boolean)
+    )
+  );
   const evidence = proposal.exact_match
     ? "Descrizione normalizzata esatta"
     : proposal.identity_score > 0
@@ -2034,7 +2129,22 @@ function ProposalCell({
         )}
         {proposal.feature && (
           <Typography variant="caption" color="text.secondary">
-            {proposal.feature}
+            Feature: {proposal.feature}
+          </Typography>
+        )}
+        {quantity.length > 0 && (
+          <Typography variant="caption" color="text.secondary">
+            Contenuto: {quantity.join(" · ")}
+          </Typography>
+        )}
+        {proposal.extra && (
+          <Typography variant="caption" color="text.secondary">
+            Extra: {proposal.extra}
+          </Typography>
+        )}
+        {evidenceSpans.length > 0 && (
+          <Typography variant="caption" color="text.secondary">
+            Evidenza sorgente: {evidenceSpans.join(" · ")}
           </Typography>
         )}
       </Stack>

@@ -20,6 +20,7 @@ from services.mc_code_bs25 import (
     Bs25WorkerClient,
     Bs25WorkerError,
     bs25_worker_configured,
+    run_bs23_v2_batch,
     run_bs25_batch,
 )
 from services.mc_code_local_store import (
@@ -165,6 +166,7 @@ def get_mc_code_config():
         "fuzzy_lookup_actions_available": False,
         "ai_lookup_actions_available": False,
         "bs25_actions_available": bs25_available,
+        "bs23_v2_actions_available": bs25_available,
         "bs25ai_actions_available": True,
         "lookup_actions_available": False,
         "data_source": "local_snapshot",
@@ -220,11 +222,34 @@ def submit_local_bs25(
     background_tasks: BackgroundTasks,
     request: Request,
 ):
+    return _submit_bs25_variant(
+        payload, background_tasks, request, run_bs25_batch, "BS25"
+    )
+
+
+@router.post("/mc-code/bs23-v2", status_code=202)
+def submit_local_bs23_v2(
+    payload: McCodeItemsRequest,
+    background_tasks: BackgroundTasks,
+    request: Request,
+):
+    return _submit_bs25_variant(
+        payload, background_tasks, request, run_bs23_v2_batch, "BS23_v2"
+    )
+
+
+def _submit_bs25_variant(
+    payload: McCodeItemsRequest,
+    background_tasks: BackgroundTasks,
+    request: Request,
+    runner: Any,
+    label: str,
+):
     item_codes = _normalized_item_codes(payload.item_codes)
     if len(item_codes) > MAX_BS25_BATCH_SIZE:
         raise HTTPException(
             status_code=400,
-            detail=f"Seleziona al massimo {MAX_BS25_BATCH_SIZE} record per analisi BS25",
+            detail=f"Seleziona al massimo {MAX_BS25_BATCH_SIZE} record per analisi {label}",
         )
     try:
         Bs25WorkerClient.from_environment()
@@ -260,7 +285,7 @@ def submit_local_bs25(
             locked.append(item_code)
     if accepted:
         background_tasks.add_task(
-            run_bs25_batch,
+            runner,
             payload.environment,
             payload.company,
             accepted,

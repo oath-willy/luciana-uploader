@@ -47,6 +47,19 @@ type UserData = {
   email: string;
 };
 
+const groupNavLinkStyles = {
+  label: { fontWeight: 700 },
+};
+
+const pdbSettingsStyles = {
+  root: {
+    backgroundColor: 'var(--mantine-color-blue-light)',
+    border: '1px solid var(--mantine-color-blue-light-color)',
+    borderRadius: 'var(--mantine-radius-sm)',
+  },
+  label: { fontWeight: 700 },
+};
+
 export default function AdminDashboardPage() {
   const [user, setUser] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -133,7 +146,7 @@ export default function AdminDashboardPage() {
                 <Stack gap="xs">
                   <NavLink label={!navCollapsed ? "Home" : ""} leftSection={<IconHome2 size={18} />} component={Link} to="/" />
 
-                  <NavLink label={!navCollapsed ? "Storage Browser" : ""} leftSection={<IconBrowser size={18} />}>
+                  <NavLink label={!navCollapsed ? "Storage Browser" : ""} leftSection={<IconBrowser size={18} />} styles={groupNavLinkStyles}>
                     {!navCollapsed && (
                       <>
                         <NavLink label="Bronze" pl="md" component={Link} to="/navigator/file-browser-bronze" />
@@ -143,7 +156,7 @@ export default function AdminDashboardPage() {
                     )}
                   </NavLink>
 
-                  <NavLink label={!navCollapsed ? "Tests" : ""} leftSection={<IconTestPipe size={18} />}>
+                  <NavLink label={!navCollapsed ? "Tests" : ""} leftSection={<IconTestPipe size={18} />} styles={groupNavLinkStyles}>
                     {!navCollapsed && (
                       <>
                         <NavLink label="Launch R script" pl="md" component={Link} to="/navigator/run-r-script" />
@@ -152,27 +165,34 @@ export default function AdminDashboardPage() {
                     )}
                   </NavLink>
 
-                  <NavLink label={!navCollapsed ? "Database" : ""} leftSection={<IconDatabase size={18} />}>
+                  <NavLink label={!navCollapsed ? "Database" : ""} leftSection={<IconDatabase size={18} />} styles={groupNavLinkStyles}>
                     {!navCollapsed && (
                       <>
-                        <NavLink label="PDB" pl="md">
+                        <NavLink label="PDB" pl="md" styles={groupNavLinkStyles}>
                           <NavLink label="Products" pl="lg" component={Link} to="/navigator/products" />
                           <NavLink label="Products Test" pl="lg" component={Link} to="/navigator/products-test" />
-                          <NavLink label="CODE TOOLS" pl="lg">
+                          <NavLink label="CODE TOOLS" pl="lg" styles={groupNavLinkStyles}>
                             <NavLink label="MC CODE" pl="xl" component={Link} to="/navigator/mc-code" />
                           </NavLink>
                           <NavLink label="Companies" pl="lg" component={Link} to="/navigator/companies" />
                           <NavLink label="Father Names" pl="lg" component={Link} to="/navigator/father-names" />
-                          <NavLink label="Settings" pl="lg" component={Link} to="/navigator/pdb-settings" />
+                          <NavLink
+                            label="Settings"
+                            pl="lg"
+                            leftSection={<IconSettings size={16} />}
+                            component={Link}
+                            to="/navigator/pdb-settings"
+                            styles={pdbSettingsStyles}
+                          />
                         </NavLink>
 
-                        <NavLink label="Domain Tables" pl="md">
+                        <NavLink label="Domain Tables" pl="md" styles={groupNavLinkStyles}>
                           <NavLink label="Countries" pl="lg" component={Link} to="/navigator/countries" />
                           <NavLink label="Currencies" pl="lg" component={Link} to="/navigator/currencies" />
                           <NavLink label="Countries Currencies" pl="lg" component={Link} to="/navigator/countries-currencies" />
                         </NavLink>
 
-                        <NavLink label="Utilities" pl="md">
+                        <NavLink label="Utilities" pl="md" styles={groupNavLinkStyles}>
                           <NavLink label="Countries Dictionary" pl="lg" component={Link} to="/navigator/countries-dictionary" />
                         </NavLink>
                       </>
@@ -193,7 +213,7 @@ export default function AdminDashboardPage() {
                     to="https://github.com/keystone-dev/luciana-project"
                   />
 
-                  <NavLink label={!navCollapsed ? "Settings" : ""} leftSection={<IconSettings size={18} />}>
+                  <NavLink label={!navCollapsed ? "Settings" : ""} leftSection={<IconSettings size={18} />} styles={groupNavLinkStyles}>
                     {!navCollapsed && (
                       <NavLink label="Control Panel" pl="md" component={Link} to="/navigator/control-panel" />
                     )}

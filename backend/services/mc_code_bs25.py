@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 import os
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, ClassVar, Protocol
 
 import requests
 
@@ -25,10 +25,11 @@ class Bs25Retriever(Protocol):
 
 @dataclass(frozen=True)
 class Bs25WorkerClient:
+    endpoint: ClassVar[str] = "/v1/bs25"
+    retriever_version: ClassVar[str] = "pdb-bm25-vm04-v1"
     base_url: str
     token: str
     timeout_seconds: int = 180
-    retriever_version: str = "pdb-bm25-vm04-v1"
 
     @classmethod
     def from_environment(cls) -> "Bs25WorkerClient":
@@ -51,7 +52,7 @@ class Bs25WorkerClient:
             )
         outgoing = [_worker_item(item) for item in items]
         response = requests.post(
-            f"{self.base_url}/v1/bs25",
+            f"{self.base_url}{self.endpoint}",
             headers={"Authorization": f"Bearer {self.token}"},
             json={"items": outgoing},
             timeout=self.timeout_seconds,
@@ -67,6 +68,11 @@ class Bs25WorkerClient:
         return _validate_response(payload, outgoing)
 
 
+class Bs23V2WorkerClient(Bs25WorkerClient):
+    endpoint = "/v1/bs23-v2"
+    retriever_version = "pdb-coding-proposals-v2"
+
+
 def bs25_worker_configured() -> bool:
     return bool(
         os.getenv("BS25_WORKER_URL", "").strip()
@@ -80,6 +86,36 @@ def run_bs25_batch(
     item_codes: list[str],
     *,
     retriever: Bs25Retriever | None = None,
+) -> None:
+    _run_bs25_batch(
+        environment,
+        company,
+        item_codes,
+        retriever=retriever or Bs25WorkerClient.from_environment(),
+    )
+
+
+def run_bs23_v2_batch(
+    environment: str,
+    company: str,
+    item_codes: list[str],
+    *,
+    retriever: Bs25Retriever | None = None,
+) -> None:
+    _run_bs25_batch(
+        environment,
+        company,
+        item_codes,
+        retriever=retriever or Bs23V2WorkerClient.from_environment(),
+    )
+
+
+def _run_bs25_batch(
+    environment: str,
+    company: str,
+    item_codes: list[str],
+    *,
+    retriever: Bs25Retriever,
 ) -> None:
     snapshot = McCodeSnapshotStore(environment)  # type: ignore[arg-type]
     runtime = RuntimeStore()
@@ -108,9 +144,8 @@ def run_bs25_batch(
     if not active:
         return
     try:
-        client = retriever or Bs25WorkerClient.from_environment()
-        proposals_by_code = client.retrieve(active)
-        version = getattr(client, "retriever_version", "pdb-bm25-vm04-v1")
+        proposals_by_code = retriever.retrieve(active)
+        version = getattr(retriever, "retriever_version", "pdb-bm25-vm04-v1")
         for item in active:
             item_code = str(item["item_code"])
             proposals = proposals_by_code[item_code]

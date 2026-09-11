@@ -38,6 +38,11 @@ tre proposte e le salva nel runtime locale come in precedenza. Il servizio usa e
 `panel_data_utilities/scripts/jobs/pdb/ref_pdb_dump.parquet` e un indice SQLite derivato corrente,
 senza conservare versioni storiche.
 
+Il percorso sperimentale `POST /api/mc-code/bs23-v2` delega allo stesso worker tramite
+`POST /v1/bs23-v2` e persiste le tre proposte nelle medesime colonne di
+`local_bs25_results`. `retriever_version=pdb-coding-proposals-v2` distingue la revisione;
+non vengono create colonne aggiuntive e gli item con proposte gia presenti restano bloccati.
+
 La pagina `Database > PDB > Settings` esegue via SSH a chiave
 `fetch_ref_pdb_dump.sh`, scarica in streaming lo stesso file come
 `/home/data/codex/ref_pdb_dump.parquet` e ricostruisce atomicamente l'indice del worker. Lo stato
