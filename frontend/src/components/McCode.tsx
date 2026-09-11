@@ -2063,10 +2063,7 @@ function ProposalCell({
 
   const selected =
     Number(optimisticRank ?? row.bs25_selected_proposal_rank) === rank;
-  const details = [
-    proposal.brand && `Brand: ${proposal.brand}`,
-    proposal.manufacturer && `Produttore: ${proposal.manufacturer}`,
-    proposal.father_name && `Father name: ${proposal.father_name}`,
+  const attributes = [
     proposal.pack && `Pack: ${proposal.pack}`,
     proposal.measure && `Misura: ${proposal.measure}`,
   ].filter(Boolean);
@@ -2122,9 +2119,24 @@ function ProposalCell({
         <Typography variant="caption" color="text.secondary">
           {evidence} · score ordinale {proposal.identity_score.toFixed(4)}
         </Typography>
-        {details.length > 0 && (
+        {proposal.brand && (
           <Typography variant="caption" color="text.secondary">
-            {details.join(" · ")}
+            Brand: {proposal.brand}
+          </Typography>
+        )}
+        {proposal.manufacturer && (
+          <Typography variant="caption" color="text.secondary">
+            Produttore: {proposal.manufacturer}
+          </Typography>
+        )}
+        {proposal.father_name && (
+          <Typography variant="caption" color="text.secondary">
+            Father Name: {proposal.father_name}
+          </Typography>
+        )}
+        {attributes.length > 0 && (
+          <Typography variant="caption" color="text.secondary">
+            {attributes.join(" · ")}
           </Typography>
         )}
         {proposal.feature && (
