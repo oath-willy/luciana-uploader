@@ -40,6 +40,7 @@ import Countries from '../components/database/Countries';
 import Currencies from '../components/database/Currencies';
 import CountriesCurrencies from '../components/database/CountriesCurrencies';
 import McCode from '../components/McCode';
+import ItemsCode from '../components/ItemsCode';
 import PdbSettings from '../components/database/PdbSettings';
 
 type UserData = {
@@ -173,6 +174,7 @@ export default function AdminDashboardPage() {
                           <NavLink label="Products Test" pl="lg" component={Link} to="/navigator/products-test" />
                           <NavLink label="CODE TOOLS" pl="lg" styles={groupNavLinkStyles}>
                             <NavLink label="MC CODE" pl="xl" component={Link} to="/navigator/mc-code" />
+                            <NavLink label="ITEMS CODE" pl="xl" component={Link} to="/navigator/items-code" />
                           </NavLink>
                           <NavLink label="Companies" pl="lg" component={Link} to="/navigator/companies" />
                           <NavLink label="Father Names" pl="lg" component={Link} to="/navigator/father-names" />
@@ -264,6 +266,7 @@ export default function AdminDashboardPage() {
           <Route path="products" element={<PDBCodifica />} />
           <Route path="products-test" element={<ProductsTest />} />
           <Route path="mc-code" element={<McCode />} />
+          <Route path="items-code" element={<ItemsCode />} />
           <Route path="codex" element={<Navigate to="/navigator/mc-code" replace />} />
           <Route path="companies" element={<Companies />} />
           <Route path="father-names" element={<FatherNames />} />

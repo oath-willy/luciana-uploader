@@ -38,6 +38,7 @@ import ServerDataGrid, {
   ServerGridFetchParams,
   ServerGridResult,
 } from "./common/ServerDataGrid";
+import { COMPACT_LAYOUT_SCALE as MC_CODE_LAYOUT_SCALE, compactTypographyStyles as mcCodeTypographyStyles } from "./common/compactWorkspace";
 
 type McCodeView = "light" | "full";
 type McCodeEnvironmentName = "dev" | "prod";
@@ -154,37 +155,6 @@ const backendBaseUrl = process.env.REACT_APP_BACKEND_URL || "";
 const MAX_EXTRA_COLUMNS = 12;
 const BS25_SELECTION_OUTBOX_KEY = "mc-code.bs25.selection-outbox.v1";
 const BS25_DRAFTS_KEY = "mc-code.bs25.drafts.v1";
-const MC_CODE_LAYOUT_SCALE = 0.65;
-const MC_CODE_TEXT_SCALE = 0.8 / MC_CODE_LAYOUT_SCALE;
-
-const mcCodeTypographyStyles = {
-  fontSize: `${MC_CODE_TEXT_SCALE}rem`,
-  "& .MuiTypography-h1": { fontSize: `${6 * MC_CODE_TEXT_SCALE}rem` },
-  "& .MuiTypography-h2": { fontSize: `${3.75 * MC_CODE_TEXT_SCALE}rem` },
-  "& .MuiTypography-h3": { fontSize: `${3 * MC_CODE_TEXT_SCALE}rem` },
-  "& .MuiTypography-h4": { fontSize: `${2.125 * MC_CODE_TEXT_SCALE}rem` },
-  "& .MuiTypography-h5": { fontSize: `${1.5 * MC_CODE_TEXT_SCALE}rem` },
-  "& .MuiTypography-h6": { fontSize: `${1.25 * MC_CODE_TEXT_SCALE}rem` },
-  "& .MuiTypography-subtitle1, & .MuiTypography-body1": {
-    fontSize: `${MC_CODE_TEXT_SCALE}rem`,
-  },
-  "& .MuiTypography-subtitle2, & .MuiTypography-body2": {
-    fontSize: `${0.875 * MC_CODE_TEXT_SCALE}rem`,
-  },
-  "& .MuiTypography-caption, & .MuiTypography-overline": {
-    fontSize: `${0.75 * MC_CODE_TEXT_SCALE}rem`,
-  },
-  "& .MuiButton-root, & .MuiToggleButton-root": {
-    fontSize: `${0.875 * MC_CODE_TEXT_SCALE}rem`,
-  },
-  "& .MuiInputBase-root, & .MuiInputLabel-root": {
-    fontSize: `${MC_CODE_TEXT_SCALE}rem`,
-  },
-  "& .MuiChip-label": { fontSize: `${0.8125 * MC_CODE_TEXT_SCALE}rem` },
-  "& .MuiAlert-message, & .MuiDataGrid-root, & .MuiTablePagination-root": {
-    fontSize: `${0.875 * MC_CODE_TEXT_SCALE}rem`,
-  },
-} as const;
 
 function readBs25Storage(key: string): string | null {
   const value = window.localStorage.getItem(key);

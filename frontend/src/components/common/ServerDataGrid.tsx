@@ -18,6 +18,7 @@ import {
   IconButton,
   InputAdornment,
   TextField,
+  TablePagination,
 } from "@mui/material";
 
 export type ServerGridFetchParams = {
@@ -65,6 +66,7 @@ type ServerDataGridProps = {
   isRowSelectable?: (params: GridRowParams) => boolean;
   height?: string | number;
   emptyMessage?: string;
+  externalPagination?: boolean;
 };
 
 export default function ServerDataGrid({
@@ -96,6 +98,7 @@ export default function ServerDataGrid({
   isRowSelectable,
   height = "89vh",
   emptyMessage = "Nessun dato",
+  externalPagination = false,
 }: ServerDataGridProps) {
   const [rows, setRows] = useState<any[]>([]);
   const [rowCount, setRowCount] = useState(0);
@@ -529,9 +532,9 @@ export default function ServerDataGrid({
           columnHeaderHeight={76}
           paginationMode="server"
           rowCount={rowCount}
-          paginationModel={paginationModel}
-          onPaginationModelChange={(model) => setPaginationModel(model)}
-          pageSizeOptions={pageSizeOptions}
+          paginationModel={externalPagination ? { page: 0, pageSize: 100 } : paginationModel}
+          onPaginationModelChange={externalPagination ? undefined : (model) => setPaginationModel(model)}
+          pageSizeOptions={externalPagination ? [100] : pageSizeOptions}
           checkboxSelection={checkboxSelection}
           keepNonExistentRowsSelected
           disableRowSelectionOnClick
@@ -547,6 +550,14 @@ export default function ServerDataGrid({
                 selectedCount={selectedIds.size}
                 loadedCount={rows.length}
                 rowCount={rowCount}
+                pagination={externalPagination ? (
+                  <TablePagination component="div" count={rowCount}
+                    page={paginationModel.page} rowsPerPage={paginationModel.pageSize}
+                    rowsPerPageOptions={pageSizeOptions}
+                    onPageChange={(_, page) => setPaginationModel((current) => ({ ...current, page }))}
+                    onRowsPerPageChange={(event) => setPaginationModel({ page: 0, pageSize: Number(event.target.value) })}
+                  />
+                ) : undefined}
               />
             ),
           }}
@@ -560,10 +571,12 @@ function CustomFooter({
   selectedCount,
   loadedCount,
   rowCount,
+  pagination,
 }: {
   selectedCount: number;
   loadedCount: number;
   rowCount: number;
+  pagination?: React.ReactNode;
 }) {
   return (
     <Box
@@ -582,7 +595,7 @@ function CustomFooter({
           : `${loadedCount} righe visualizzate su ${rowCount} totali`}
       </Box>
 
-      <GridPagination />
+      {pagination || <GridPagination />}
     </Box>
   );
 }

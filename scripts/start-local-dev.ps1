@@ -81,7 +81,7 @@ $frontendErr = Join-Path $logDir "frontend.err.log"
 Write-Host "Avvio backend FastAPI su http://localhost:$BackendPort ..."
 $backendProcess = Start-Process `
   -FilePath $backendPython `
-  -ArgumentList @("-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", "$BackendPort", "--reload") `
+  -ArgumentList @("-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", "$BackendPort", "--reload", "--reload-exclude", ".venv") `
   -WorkingDirectory $backendDir `
   -RedirectStandardOutput $backendOut `
   -RedirectStandardError $backendErr `
