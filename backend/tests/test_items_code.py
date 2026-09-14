@@ -30,8 +30,10 @@ class ItemsCodeTests(unittest.TestCase):
              "item_extra_descriptions": json.dumps(extras)} for index in range(1100)
         ] + [{"company": "OTHER", "item_code": "1", "description": "outside", "item_extra_descriptions": '{"other_field":"other"}'}]), self.root / "pdb_new_items.parquet")
         pq.write_table(pa.Table.from_pylist([
-            {"company_item_code": "ACME|1", "dealer_company_name": "ACME", "description": "alpha", "extra": "100%_literal"},
-            {"company_item_code": "OTHER|2", "dealer_company_name": "OTHER", "description": "beta", "extra": "100xxliteral"},
+            {"company_item_code": "ACME|1", "dealer_company_name": "ACME", "description": "alpha", "extra": "100%_literal",
+             "mc_lvl1_code": "2", "mc_lvl2_code": "03", "mc_lvl3_code": "0", "pack": "Box", "brand_name": "brand", "last_update": "2026-01-01"},
+            {"company_item_code": "OTHER|2", "dealer_company_name": "OTHER", "description": "beta", "extra": "100xxliteral",
+             "mc_lvl1_code": None, "mc_lvl2_code": "3", "mc_lvl3_code": "1", "pack": "Bag", "brand_name": "brand", "last_update": "2026-01-01"},
         ]), self.root / "ref_pdb_dump.parquet")
         app = FastAPI()
         app.include_router(router, prefix="/api")
@@ -83,6 +85,30 @@ class ItemsCodeTests(unittest.TestCase):
         pq.write_table(pa.Table.from_pylist([{"company": "NEW", "description": "new"}]), self.root / "ref_pdb_dump.parquet")
         after = self.client.get("/api/items-code/pdb/metadata").json()
         self.assertEqual(after["companies"], ["NEW"])
+
+    def test_master_code_and_support_columns_are_not_copied_from_reference(self):
+        reference = self.search("pdb", filters={"master_code": "02_03_00"}).json()
+        self.assertEqual(reference["total"], 1)
+        self.assertEqual(reference["rows"][0]["master_code"], "02_03_00")
+        fields = [column["field"] for column in reference["columns"]]
+        self.assertNotIn("mc_lvl1_code", fields)
+        self.assertEqual(fields.count("master_code"), 1)
+        self.assertIsNone(self.search("pdb", company="OTHER").json()["rows"][0]["master_code"])
+        upper = self.search("new-items", company="ACME").json()
+        fields = [column["field"] for column in upper["columns"]]
+        self.assertLess(fields.index("item_extra_descriptions.field_14"), fields.index("master_code"))
+        self.assertNotIn("brand_name", fields)
+        self.assertNotIn("last_update", fields)
+        self.assertIsNone(upper["rows"][0]["master_code"])
+        self.assertIsNone(upper["rows"][0]["pack"])
+        self.assertEqual(self.search("new-items", company="ACME", filters={"pack": "Box"}).json()["total"], 0)
+
+    def test_support_schema_available_when_reference_is_missing(self):
+        (self.root / "ref_pdb_dump.parquet").unlink()
+        upper = self.search("new-items", company="ACME").json()
+        self.assertEqual(upper["total"], 1100)
+        self.assertIsNone(upper["rows"][0]["master_code"])
+        self.assertIn("inner_qty", upper["rows"][0])
 
 
 if __name__ == "__main__":

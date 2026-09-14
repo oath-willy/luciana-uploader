@@ -4,6 +4,7 @@ import {
   GRID_CHECKBOX_SELECTION_COL_DEF,
   GridCellCheckboxRenderer,
   GridColDef,
+  GridColumnVisibilityModel,
   GridHeaderCheckbox,
   GridPagination,
   GridPaginationModel,
@@ -67,6 +68,7 @@ type ServerDataGridProps = {
   height?: string | number;
   emptyMessage?: string;
   externalPagination?: boolean;
+  columnVisibilityModel?: GridColumnVisibilityModel;
 };
 
 export default function ServerDataGrid({
@@ -99,6 +101,7 @@ export default function ServerDataGrid({
   height = "89vh",
   emptyMessage = "Nessun dato",
   externalPagination = false,
+  columnVisibilityModel,
 }: ServerDataGridProps) {
   const [rows, setRows] = useState<any[]>([]);
   const [rowCount, setRowCount] = useState(0);
@@ -522,6 +525,7 @@ export default function ServerDataGrid({
           apiRef={gridApiRef}
           rows={rows}
           columns={dataGridColumns}
+          columnVisibilityModel={columnVisibilityModel}
           getRowId={getRowId}
           loading={loading}
           rowHeight={rowHeight}

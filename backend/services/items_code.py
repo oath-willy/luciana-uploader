@@ -17,6 +17,13 @@ from services.pdb_ref_sync import pdb_ref_local_path
 Dataset = Literal["new-items", "pdb"]
 ROW_ID = "__items_code_row_id"
 JSON_FIELD = "item_extra_descriptions"
+MC_FIELDS = ("mc_lvl1_code", "mc_lvl2_code", "mc_lvl3_code")
+SUPPORT_FIELDS = (
+    ("prefix_code", "VARCHAR"), ("father_name", "VARCHAR"), ("master_code", "VARCHAR"),
+    ("pack", "VARCHAR"), ("inner_count", "DECIMAL(18,6)"), ("inner_qty", "DECIMAL(18,6)"),
+    ("pack_measure_unit", "VARCHAR"), ("feature", "VARCHAR"), ("measure", "VARCHAR"), ("extra", "VARCHAR"),
+)
+SUPPORT_EXCLUDED = {"company_item_code", "description", "dealer_company_name", "brand_name", "brand_prefix", "last_update"}
 
 
 def dataset_path(dataset: Dataset) -> Path:
@@ -100,6 +107,15 @@ def _columns(stamp: tuple[str, int, int], dataset: Dataset, company: str) -> tup
     fields = _schema(stamp)
     columns = [{"field": name, "header_name": name.replace("_", " ").title(), "data_type": kind} for name, kind in fields]
     expressions = {name: _identifier(name) for name, _ in fields}
+    if dataset == "pdb" and all(name in expressions for name in MC_FIELDS):
+        position = next(index for index, column in enumerate(columns) if column["field"] == MC_FIELDS[0])
+        parts = [f"TRY_CAST({_identifier(name)} AS INTEGER)" for name in MC_FIELDS]
+        valid = " AND ".join(f"{part} BETWEEN 0 AND 99" for part in parts)
+        columns = [column for column in columns if column["field"] not in MC_FIELDS]
+        columns.insert(position, {"field": "master_code", "header_name": "Master Code", "data_type": "VARCHAR"})
+        for name in MC_FIELDS:
+            del expressions[name]
+        expressions["master_code"] = f"CASE WHEN {valid} THEN printf('%02d_%02d_%02d', {', '.join(parts)}) ELSE NULL END"
     if dataset == "new-items":
         if "company_item_code" not in expressions:
             columns.insert(2, {"field": "company_item_code", "header_name": "Company Item Code", "data_type": "VARCHAR"})
@@ -111,6 +127,17 @@ def _columns(stamp: tuple[str, int, int], dataset: Dataset, company: str) -> tup
             path = '$.' + json.dumps(key, ensure_ascii=False)
             columns.append({"field": field, "header_name": key.replace("_", " ").title(), "data_type": "JSON"})
             expressions[field] = f"json_extract({_identifier(JSON_FIELD)}, {_literal(path)})"
+        reference = dataset_path("pdb")
+        if reference.is_file():
+            reference_columns, _ = _columns(_stamp(reference), "pdb", "")
+        else:
+            reference_columns = [{"field": name, "header_name": name.replace("_", " ").title(), "data_type": kind}
+                                 for name, kind in SUPPORT_FIELDS]
+        for column in reference_columns:
+            field = column["field"]
+            if field not in SUPPORT_EXCLUDED and field not in expressions:
+                columns.append(column.copy())
+                expressions[field] = f"CAST(NULL AS {column['data_type']})"
     return columns, expressions
 
 

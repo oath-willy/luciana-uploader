@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, Autocomplete, Box, IconButton, TextField, Tooltip } from "@mui/material";
+import { Alert, Autocomplete, Box, FormControlLabel, IconButton, Switch, TextField, Tooltip } from "@mui/material";
 import { GridColDef } from "@mui/x-data-grid";
 import { RefreshCw } from "lucide-react";
 import ServerDataGrid, { ServerGridFetchParams } from "../common/ServerDataGrid";
@@ -7,6 +7,7 @@ import { DatasetMetadata, DatasetName, fetchDatasetMetadata, fetchDatasetRows } 
 
 const getRowId = (row: Record<string, any>) => row.__items_code_row_id;
 const pageSizes = [25, 50, 100, 250, 500, 1000];
+const isExtraColumn = (field: string) => field === "item_extra_descriptions" || field.startsWith("item_extra_descriptions.");
 
 export default function DatasetTable({ dataset, title, requireCompany = false }: {
   dataset: DatasetName; title: string; requireCompany?: boolean;
@@ -16,6 +17,7 @@ export default function DatasetTable({ dataset, title, requireCompany = false }:
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshToken, setRefreshToken] = useState(0);
+  const [showExtraColumns, setShowExtraColumns] = useState(true);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -30,11 +32,16 @@ export default function DatasetTable({ dataset, title, requireCompany = false }:
 
   const columns = useMemo<GridColDef[]>(() => (metadata?.columns || []).map((column) => ({
     field: column.field, headerName: column.header_name, sortable: false,
+    headerClassName: isExtraColumn(column.field) ? "items-code-extra-header" : undefined,
     width: column.field === "description" || column.field === "item_extra_descriptions" ? 360 : 185,
     minWidth: 120,
     type: /^(DECIMAL|DOUBLE|FLOAT|BIGINT|INTEGER|SMALLINT)/.test(column.data_type) ? "number" : "string",
     valueFormatter: (value: unknown) => Array.isArray(value) ? value.join(" | ") : value && typeof value === "object" ? JSON.stringify(value) : String(value ?? ""),
   })), [metadata?.columns]);
+  const columnVisibilityModel = useMemo(() => Object.fromEntries(
+    (metadata?.columns || []).filter((column) => isExtraColumn(column.field))
+      .map((column) => [column.field, column.field === "item_extra_descriptions" ? false : showExtraColumns])
+  ), [metadata?.columns, showExtraColumns]);
 
   const fetchRows = useCallback((params: ServerGridFetchParams) => {
     if (!metadata?.available || (requireCompany && !company)) return Promise.resolve({ rows: [], total: 0 });
@@ -42,7 +49,9 @@ export default function DatasetTable({ dataset, title, requireCompany = false }:
   }, [dataset, company, metadata?.available, requireCompany]);
 
   return (
-    <Box component="section" sx={{ minHeight: 0, minWidth: 0, height: "100%", display: "flex", flexDirection: "column" }}>
+    <Box component="section" sx={{ minHeight: 0, minWidth: 0, height: "100%", display: "flex", flexDirection: "column",
+      "& .MuiDataGrid-columnHeader.items-code-extra-header": { backgroundColor: "#d8eee8" },
+    }}>
       {error && <Alert severity="error">{error}</Alert>}
       {metadata && !metadata.available && <Alert severity="warning">{metadata.message}</Alert>}
       <ServerDataGrid
@@ -50,13 +59,19 @@ export default function DatasetTable({ dataset, title, requireCompany = false }:
         getRowId={getRowId} defaultPageSize={100} pageSizeOptions={pageSizes}
         height="100%" refreshToken={refreshToken}
         externalPagination
+        columnVisibilityModel={columnVisibilityModel}
         emptyMessage={loading ? "Caricamento..." : requireCompany && !company ? "Seleziona una Company" : "Nessun dato"}
         toolbarLeft={
+          <>
           <Autocomplete size="small" options={metadata?.companies || []} value={company || null}
             onChange={(_, value) => setCompany(value || "")} loading={loading}
             sx={{ width: 280, maxWidth: "100%" }}
             renderInput={(params) => <TextField {...params} label={requireCompany ? "Company" : "Company (tutte)"} />}
           />
+          {dataset === "new-items" && <FormControlLabel label="Colonne extra" control={
+            <Switch size="small" checked={showExtraColumns} onChange={(_, checked) => setShowExtraColumns(checked)} />
+          } />}
+          </>
         }
         toolbarRight={
           <Tooltip title={`Aggiorna ${metadata?.source_file || title}`}>
