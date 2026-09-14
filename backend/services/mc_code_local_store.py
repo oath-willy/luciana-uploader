@@ -111,6 +111,7 @@ class McCodeSnapshotStore:
             "company_item_code",
             "item_code",
             "description",
+            "brand_raw", "brand", "brand_prefix",
             *(column["field"] for column in extra_columns),
         }
         unknown = sorted(set(filters) - allowed)
@@ -256,12 +257,14 @@ class McCodeSnapshotStore:
         return columns[:MAX_EXTRA_COLUMNS]
 
     def _deserialize_item(self, row: sqlite3.Row, view: McCodeView) -> dict[str, Any]:
+        details = _loads(row["details_json"], {})
         result = {
             "id": f'{row["company"]}::{row["item_code"]}',
             "company": row["company"],
             "item_code": row["item_code"],
             "company_item_code": row["company_item_code"],
             "description": row["description"],
+            **{field: details.get(field) for field in ("brand_raw", "brand", "brand_prefix")},
             "bs25_status": row["bs25_status"],
             "bs25_proposal_1": _loads(row["proposal_1_json"], None),
             "bs25_proposal_2": _loads(row["proposal_2_json"], None),
@@ -277,7 +280,7 @@ class McCodeSnapshotStore:
                 }
             )
         if view == "full":
-            result.update(_loads(row["details_json"], {}))
+            result.update(details)
         return result
 
     @contextmanager

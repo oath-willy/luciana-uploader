@@ -243,10 +243,10 @@ class McCodeLocalApiTests(unittest.TestCase):
         self.assertEqual(response.json()["accepted_item_codes"], ["A2"])
         runner.assert_called_once_with("dev", "HERAEUS", ["A2"])
 
-    def test_bs23_v2_is_delegated_to_vm04_and_reuses_bs25_storage(self):
+    def test_bs25_v2_is_delegated_to_vm04_and_preserves_legacy_route(self):
         with patch("api.mc_code.run_bs23_v2_batch") as runner:
             response = self.client.post(
-                "/api/mc-code/bs23-v2",
+                "/api/mc-code/bs25-v2",
                 json={"environment": "dev", "company": "HERAEUS", "item_codes": ["A2"]},
             )
 

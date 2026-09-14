@@ -63,7 +63,7 @@ class McCodeBs25WorkerTests(unittest.TestCase):
                     "item_code": "A2",
                     "company_item_code": "HERAEUS|A2",
                     "description": "HeraCeram cre active indication",
-                    "details": {"future_parameter": "kept in extra"},
+                    "details": {"future_parameter": "kept in extra", "brand_raw": "raw brand", "brand": "HERACERAM", "brand_prefix": "HC"},
                 }
             ],
             [{"master_code": "38_02_02", "components": {}}],
@@ -171,6 +171,25 @@ class McCodeBs25WorkerTests(unittest.TestCase):
 
         self.assertEqual(post.call_args.args[0], "http://vm04.test:8094/v1/bs23-v2")
         self.assertEqual(result["A2"][0]["brand"], "HERACERAM")
+        for brand, raw, expected in (
+            (" HERACERAM ", "raw brand", "HERACERAM"),
+            ("   ", " raw brand ", "raw brand"),
+            (None, "raw brand", "raw brand"),
+            (None, None, ""),
+            ([], ["", "raw brand"], "raw brand"),
+        ):
+            Bs23V2WorkerClient("http://vm04.test:8094", "token").retrieve([
+                {"company": "HERAEUS", "item_code": "A2", "description": "description", "brand": brand, "brand_raw": raw}
+            ])
+            sent = post.call_args.kwargs["json"]["items"][0]
+            self.assertEqual(sent["brand"], expected)
+            self.assertEqual(sent["extra"]["brand"], expected)
+
+    def test_brand_columns_available_and_filterable_in_light_view(self):
+        result = McCodeSnapshotStore("dev").search("HERAEUS", "light", 0, 100, "", {"brand": "HERACERAM"})
+        self.assertEqual(result["total"], 1)
+        self.assertEqual(result["rows"][0]["brand_raw"], "raw brand")
+        self.assertEqual(result["rows"][0]["brand_prefix"], "HC")
 
 
 if __name__ == "__main__":

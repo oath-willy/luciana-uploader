@@ -1,9 +1,11 @@
 import { Box, Typography } from "@mui/material";
-import DatasetTable from "./itemsCode/DatasetTable";
+import { useState } from "react";
+import DatasetTable, { ReferenceSelection } from "./itemsCode/DatasetTable";
 import { COMPACT_LAYOUT_SCALE, compactTypographyStyles } from "./common/compactWorkspace";
 import ResizableTableStack from "./common/ResizableTableStack";
 
 export default function ItemsCode() {
+  const [referenceSelection, setReferenceSelection] = useState<ReferenceSelection | null>(null);
   return (
     <Box sx={{ height: "calc(100dvh - 16px)", width: "100%", minWidth: 0, overflow: "auto" }}>
       <Box sx={{
@@ -15,8 +17,8 @@ export default function ItemsCode() {
       }}>
         <Typography component="h1" variant="h6">items-code</Typography>
         <ResizableTableStack
-          top={<DatasetTable dataset="new-items" title="PDB New Items" requireCompany />}
-          bottom={<DatasetTable dataset="pdb" title="Reference PDB" />}
+          top={<DatasetTable dataset="new-items" title="PDB New Items" requireCompany referenceSelection={referenceSelection} />}
+          bottom={<DatasetTable dataset="pdb" title="Reference PDB" onReferenceSelection={setReferenceSelection} />}
         />
       </Box>
     </Box>

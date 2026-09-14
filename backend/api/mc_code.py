@@ -167,6 +167,7 @@ def get_mc_code_config():
         "ai_lookup_actions_available": False,
         "bs25_actions_available": bs25_available,
         "bs23_v2_actions_available": bs25_available,
+        "bs25_v2_actions_available": bs25_available,
         "bs25ai_actions_available": True,
         "lookup_actions_available": False,
         "data_source": "local_snapshot",
@@ -227,14 +228,15 @@ def submit_local_bs25(
     )
 
 
-@router.post("/mc-code/bs23-v2", status_code=202)
+@router.post("/mc-code/bs23-v2", status_code=202, include_in_schema=False)
+@router.post("/mc-code/bs25-v2", status_code=202)
 def submit_local_bs23_v2(
     payload: McCodeItemsRequest,
     background_tasks: BackgroundTasks,
     request: Request,
 ):
     return _submit_bs25_variant(
-        payload, background_tasks, request, run_bs23_v2_batch, "BS23_v2"
+        payload, background_tasks, request, run_bs23_v2_batch, "BS25_V2"
     )
 
 

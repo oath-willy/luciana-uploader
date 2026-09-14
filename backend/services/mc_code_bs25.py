@@ -27,6 +27,7 @@ class Bs25Retriever(Protocol):
 class Bs25WorkerClient:
     endpoint: ClassVar[str] = "/v1/bs25"
     retriever_version: ClassVar[str] = "pdb-bm25-vm04-v1"
+    include_brand: ClassVar[bool] = False
     base_url: str
     token: str
     timeout_seconds: int = 180
@@ -50,7 +51,7 @@ class Bs25WorkerClient:
             raise ValueError(
                 f"Seleziona al massimo {MAX_BS25_BATCH_SIZE} record per analisi BS25"
             )
-        outgoing = [_worker_item(item) for item in items]
+        outgoing = [_worker_item(item, include_brand=self.include_brand) for item in items]
         response = requests.post(
             f"{self.base_url}{self.endpoint}",
             headers={"Authorization": f"Bearer {self.token}"},
@@ -68,9 +69,14 @@ class Bs25WorkerClient:
         return _validate_response(payload, outgoing)
 
 
-class Bs23V2WorkerClient(Bs25WorkerClient):
+class Bs25V2WorkerClient(Bs25WorkerClient):
+    # The deployed VM worker still exposes the legacy route.
     endpoint = "/v1/bs23-v2"
     retriever_version = "pdb-coding-proposals-v2"
+    include_brand = True
+
+
+Bs23V2WorkerClient = Bs25V2WorkerClient
 
 
 def bs25_worker_configured() -> bool:
@@ -171,8 +177,14 @@ def _run_bs25_batch(
             )
 
 
-def _worker_item(item: dict[str, Any]) -> dict[str, Any]:
-    return {
+def _brand_value(value: Any) -> str:
+    if isinstance(value, list):
+        return next((text for entry in value if (text := _brand_value(entry))), "")
+    return str(value).strip() if value is not None else ""
+
+
+def _worker_item(item: dict[str, Any], *, include_brand: bool = False) -> dict[str, Any]:
+    result = {
         "company": str(item.get("company") or "").strip(),
         "item_code": str(item.get("item_code") or "").strip(),
         "description": str(item.get("description") or "").strip(),
@@ -191,6 +203,11 @@ def _worker_item(item: dict[str, Any]) -> dict[str, Any]:
             and not key.startswith("aibs25_")
         },
     }
+    if include_brand:
+        brand = _brand_value(item.get("brand")) or _brand_value(item.get("brand_raw"))
+        result["brand"] = brand
+        result["extra"]["brand"] = brand
+    return result
 
 
 def _validate_response(

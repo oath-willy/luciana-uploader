@@ -73,6 +73,7 @@ type McCodeConfig = {
   ai_lookup_actions_available?: boolean;
   bs25_actions_available?: boolean;
   bs23_v2_actions_available?: boolean;
+  bs25_v2_actions_available?: boolean;
   bs25ai_actions_available?: boolean;
   data_source?: string;
   pdb_available?: Record<McCodeEnvironmentName, boolean>;
@@ -334,6 +335,11 @@ const lightColumns: GridColDef[] = [
     sortable: false,
   },
 ];
+
+const brandColumns: GridColDef[] = ["brand_raw", "brand", "brand_prefix"].map((field) => ({
+  field, headerName: field, width: 185, sortable: false,
+  valueFormatter: (value: unknown) => Array.isArray(value) ? value.join(" | ") : String(value ?? ""),
+}));
 
 const emptyConfig: McCodeConfig = {
   default_environment: "dev",
@@ -807,7 +813,7 @@ export default function McCode() {
       },
     }));
 
-    const leadingColumns = [lightColumns[0], lightColumns[1]];
+    const leadingColumns = [lightColumns[0], lightColumns[1], ...brandColumns];
     const bs25StatusColumn: GridColDef = {
       ...lightColumns[2],
       renderCell: (params) => {
@@ -869,7 +875,8 @@ export default function McCode() {
 
     return [
       ...leadingColumns,
-      ...extraColumns.slice(0, MAX_EXTRA_COLUMNS).map(toGridColumn),
+      ...extraColumns.filter((column) => !brandColumns.some((brandColumn) => brandColumn.field === column.field))
+        .slice(0, MAX_EXTRA_COLUMNS).map(toGridColumn),
       bs25StatusColumn,
       ...proposalColumns,
       aiBs25Column,
@@ -1152,7 +1159,7 @@ export default function McCode() {
     setActionError("");
     setActionMessage("");
     try {
-      const response = await fetch(`${backendBaseUrl}/api/mc-code/bs23-v2`, {
+      const response = await fetch(`${backendBaseUrl}/api/mc-code/bs25-v2`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1163,18 +1170,18 @@ export default function McCode() {
       });
       if (!response.ok) {
         throw new Error(
-          await responseError(response, "Impossibile avviare BS23_v2")
+          await responseError(response, "Impossibile avviare BS25_V2")
         );
       }
       const result = await response.json();
       const accepted = result.accepted_item_codes?.length || 0;
-      setActionMessage(`${accepted} record inviati al BS23_v2 su lucianavm04`);
+      setActionMessage(`${accepted} record inviati al BS25_V2 su lucianavm04`);
       setSelectedRows([]);
       setExternalSelection(undefined);
       setSelectionResetToken((current) => current + 1);
       setRefreshToken((current) => current + 1);
     } catch (error: any) {
-      setActionError(error.message || "Errore avvio BS23_v2");
+      setActionError(error.message || "Errore avvio BS25_V2");
     } finally {
       setBs23V2Busy(false);
     }
@@ -1320,7 +1327,7 @@ export default function McCode() {
     (config.bs25_actions_available ?? false) &&
     (config.pdb_available?.[environment] ?? true);
   const bs23V2Available =
-    (config.bs23_v2_actions_available ?? false) &&
+    (config.bs25_v2_actions_available ?? config.bs23_v2_actions_available ?? false) &&
     (config.pdb_available?.[environment] ?? true);
   const deterministicLookupBusy = bs25Busy || bs23V2Busy;
   const bs25Disabled =
@@ -1333,7 +1340,7 @@ export default function McCode() {
       ? "Seleziona almeno un record senza proposte BS25"
       : "";
   const bs23V2Tooltip = !bs23V2Available
-    ? "Servizio BS23_v2 su lucianavm04 non disponibile"
+    ? "Servizio BS25_V2 su lucianavm04 non disponibile"
     : bs25SelectedRows.length === 0
       ? "Seleziona almeno un record senza proposte BS25"
       : "";
@@ -1472,7 +1479,7 @@ export default function McCode() {
             >
               {bs23V2Busy
                 ? "Elaborazione..."
-                : `BS23_v2${bs25SelectedRows.length ? ` (${bs25SelectedRows.length})` : ""}`}
+                : `BS25_V2${bs25SelectedRows.length ? ` (${bs25SelectedRows.length})` : ""}`}
             </Button>
           </span>
         </Tooltip>

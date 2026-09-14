@@ -69,6 +69,9 @@ type ServerDataGridProps = {
   emptyMessage?: string;
   externalPagination?: boolean;
   columnVisibilityModel?: GridColumnVisibilityModel;
+  singleSelection?: boolean;
+  visibleRowsSelection?: boolean;
+  transformRow?: (row: any) => any;
 };
 
 export default function ServerDataGrid({
@@ -102,6 +105,9 @@ export default function ServerDataGrid({
   emptyMessage = "Nessun dato",
   externalPagination = false,
   columnVisibilityModel,
+  singleSelection = false,
+  visibleRowsSelection = false,
+  transformRow,
 }: ServerDataGridProps) {
   const [rows, setRows] = useState<any[]>([]);
   const [rowCount, setRowCount] = useState(0);
@@ -230,9 +236,10 @@ export default function ServerDataGrid({
   useEffect(() => {
     const selectedRows = Array.from(selectedIds)
       .map((id) => selectionRowsCache.current.get(id))
-      .filter(Boolean);
+      .filter(Boolean)
+      .map((row) => transformRow ? transformRow(row) : row);
     onSelectionChange?.(selectedIds, selectedRows);
-  }, [selectedIds, rows, onSelectionChange]);
+  }, [selectedIds, rows, onSelectionChange, transformRow]);
 
   useEffect(() => {
     onQueryChange?.({
@@ -523,7 +530,7 @@ export default function ServerDataGrid({
             },
           }}
           apiRef={gridApiRef}
-          rows={rows}
+          rows={transformRow ? rows.map(transformRow) : rows}
           columns={dataGridColumns}
           columnVisibilityModel={columnVisibilityModel}
           getRowId={getRowId}
@@ -540,14 +547,19 @@ export default function ServerDataGrid({
           onPaginationModelChange={externalPagination ? undefined : (model) => setPaginationModel(model)}
           pageSizeOptions={externalPagination ? [100] : pageSizeOptions}
           checkboxSelection={checkboxSelection}
+          disableRowSelectionExcludeModel={visibleRowsSelection}
+          disableMultipleRowSelection={singleSelection}
           keepNonExistentRowsSelected
-          disableRowSelectionOnClick
+          disableRowSelectionOnClick={!singleSelection}
           rowSelectionModel={rowSelectionModel}
           onRowSelectionModelChange={(newSelection) =>
             setRowSelectionModel(newSelection)
           }
           onRowClick={onRowClick}
-          localeText={{ noRowsLabel: emptyMessage }}
+          localeText={{ noRowsLabel: emptyMessage, ...(visibleRowsSelection ? {
+            checkboxSelectionSelectAllRows: "select_all_rows",
+            checkboxSelectionUnselectAllRows: "Deseleziona righe visibili",
+          } : {}) }}
           slots={{
             footer: () => (
               <CustomFooter
