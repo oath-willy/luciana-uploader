@@ -15,6 +15,7 @@ from pyspark.sql import Window, functions as F
 
 dbutils.widgets.text("environment", "dev")
 dbutils.widgets.text("catalog", "research_dev")
+dbutils.widgets.text("new_items_uri", "")
 dbutils.widgets.text("backend_url", "")
 dbutils.widgets.text("secret_scope", "luciana")
 dbutils.widgets.text("secret_key", "codex-snapshot-token")
@@ -35,7 +36,10 @@ if environment not in {"dev", "prod"}:
 if not backend_url.startswith("https://"):
     raise ValueError("backend_url deve usare HTTPS")
 
-products = spark.table(f"{catalog}.silver.product_to_classify")
+products = spark.read.parquet(
+    dbutils.widgets.get("new_items_uri").strip()
+    or f"abfss://pdb@stkeystoneresearch{environment}.dfs.core.windows.net/pdb_new_items.parquet"
+)
 lookups = spark.table(f"{catalog}.silver.codex_bs25_lookup")
 pdb_manifest = json.loads(dbutils.fs.head(pdb_manifest_uri, 1_000_000))
 pdb_path = str(pdb_manifest.get("parquet_path") or "").strip()
@@ -89,6 +93,7 @@ base_items = (
         F.col("p.search_type"),
         F.col("p.status"),
         F.col("p.created_date"),
+        F.col("p.item_extra_descriptions"),
     )
 )
 
@@ -116,6 +121,7 @@ joined = base_items.alias("i").select(
             F.col("i.search_type"),
             F.col("i.status"),
             F.col("i.created_date"),
+            F.col("i.item_extra_descriptions"),
         )
     ).alias("details_json"),
 )
@@ -128,6 +134,11 @@ rows = []
 for row in joined.toLocalIterator():
     item = row.asDict(recursive=True)
     item["details"] = json.loads(item.pop("details_json") or "{}")
+    extra = json.loads(item["details"].get("item_extra_descriptions") or "{}")
+    item["details"]["item_extra_descriptions"] = extra
+    for key, value in extra.items():
+        if key not in {"id", "company", "item_code", "company_item_code", "description"} and not key.startswith(("bs25_", "aibs25_")):
+            item["details"].setdefault(key, value)
     for rank in (1, 2, 3):
         field = f"bs25_proposal_{rank}"
         item[field] = json.loads(item[field]) if item.get(field) else None
@@ -144,6 +155,13 @@ base_detail_columns = [
 companies = []
 for company in company_values:
     extra_columns = list(base_detail_columns)
+    extra_fields = sorted({
+        key for item in rows if item["company"] == company
+        for key in item["details"].get("item_extra_descriptions", {})
+        if key in item["details"] and key not in {column["field"] for column in base_detail_columns}
+    })
+    extra_columns.extend({"field": key, "header_name": key.replace("_", " ").title(), "value_type": "string"} for key in extra_fields)
+    extra_columns = extra_columns[:12]
     companies.append(
         {
             "company": company,

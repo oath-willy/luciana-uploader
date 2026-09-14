@@ -12,3 +12,4 @@ azure-keyvault-secrets
 requests>=2.31,<3
 sqlalchemy
 pyodbc
+pyarrow>=18,<26

@@ -388,6 +388,8 @@ function toGridColumn(column: McCodeColumn): GridColDef {
       column.value_type === "number" || column.value_type === "boolean"
         ? column.value_type
         : "string",
+    valueFormatter: (value: unknown) =>
+      Array.isArray(value) ? value.join(" | ") : value && typeof value === "object" ? JSON.stringify(value) : String(value ?? ""),
   };
 }
 

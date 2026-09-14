@@ -138,7 +138,7 @@ class McCodeSnapshotStore:
                 else "json_extract(details_json, ?)"
             )
             if expression.startswith("json_extract"):
-                parameters.append(f'$.{field}')
+                parameters.append(f'$.{json.dumps(field)}')
             clauses.append(f"CAST({expression} AS TEXT) LIKE ? ESCAPE '\\' COLLATE NOCASE")
             parameters.append(f"%{_escape_like(value)}%")
 
@@ -674,24 +674,17 @@ def publish_snapshot(
     snapshot_id: str,
     created_at: str,
     companies: list[dict[str, Any]],
-    rows: list[dict[str, Any]],
+    rows: Iterable[dict[str, Any]],
     master_codes: list[dict[str, Any]],
+    *,
+    target_path: Path | None = None,
 ) -> dict[str, Any]:
     if not snapshot_id.strip():
         raise SnapshotValidationError("snapshot_id obbligatorio")
-    if not rows:
-        raise SnapshotValidationError("Lo snapshot MC CODE non contiene righe")
     declared_companies = {
         str(item.get("company") or "").strip().upper() for item in companies
     }
-    row_companies = {str(item.get("company") or "").strip().upper() for item in rows}
-    missing_companies = sorted(row_companies - declared_companies)
-    if missing_companies:
-        raise SnapshotValidationError(
-            f"Company non dichiarata nello snapshot: {missing_companies[0]}"
-        )
-
-    target = snapshot_path(environment)
+    target = target_path or snapshot_path(environment)
     target.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
         prefix=f".{target.stem}-", suffix=".tmp", dir=target.parent
@@ -758,17 +751,16 @@ def publish_snapshot(
                     for item in companies
                 ],
             )
-            seen: set[tuple[str, str]] = set()
+            row_count = 0
             serialized_rows = []
             for item in rows:
                 company = str(item.get("company") or "").strip().upper()
                 item_code = str(item.get("item_code") or "").strip()
                 if not company or not item_code:
                     raise SnapshotValidationError("Ogni riga richiede company e item_code")
-                key = (company, item_code)
-                if key in seen:
-                    raise SnapshotValidationError(f"Riga duplicata nello snapshot: {company}|{item_code}")
-                seen.add(key)
+                if company not in declared_companies:
+                    raise SnapshotValidationError(f"Company non dichiarata nello snapshot: {company}")
+                row_count += 1
                 serialized_rows.append(
                     (
                         environment,
@@ -786,12 +778,12 @@ def publish_snapshot(
                         item.get("bs25_selection_status"),
                     )
                 )
-            connection.executemany(
-                """
-                INSERT INTO items VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
-                """,
-                serialized_rows,
-            )
+                if len(serialized_rows) >= 500:
+                    _insert_snapshot_rows(connection, serialized_rows)
+                    serialized_rows.clear()
+            _insert_snapshot_rows(connection, serialized_rows)
+            if not row_count:
+                raise SnapshotValidationError("Lo snapshot MC CODE non contiene righe")
             distinct_master_codes: dict[str, dict[str, Any]] = {}
             for item in master_codes:
                 code = str(item.get("master_code") or "").strip().upper()
@@ -820,11 +812,18 @@ def publish_snapshot(
     return {
         "environment": environment,
         "snapshot_id": snapshot_id.strip(),
-        "rows": len(rows),
+        "rows": row_count,
         "companies": len(companies),
         "master_codes": len(distinct_master_codes),
         "path": str(target),
     }
+
+
+def _insert_snapshot_rows(connection: sqlite3.Connection, rows: list[tuple]) -> None:
+    try:
+        connection.executemany("INSERT INTO items VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", rows)
+    except sqlite3.IntegrityError as exc:
+        raise SnapshotValidationError("Riga duplicata nello snapshot MC CODE") from exc
 
 
 def validate_and_publish_snapshot_file(

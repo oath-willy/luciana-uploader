@@ -161,7 +161,7 @@ def get_mc_code_config():
     return {
         "default_environment": available,
         "environments": descriptors,
-        "dataset_name": "local MC CODE snapshot",
+        "dataset_name": "pdb_new_items.parquet",
         "max_extra_columns": MAX_EXTRA_COLUMNS,
         "fuzzy_lookup_actions_available": False,
         "ai_lookup_actions_available": False,

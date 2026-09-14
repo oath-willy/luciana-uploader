@@ -19,6 +19,7 @@ import {
   IconDatabase,
   IconRefresh,
 } from "@tabler/icons-react";
+import NewItemsSettings from "./NewItemsSettings";
 
 type SyncJob = {
   request_id: string;
@@ -285,6 +286,7 @@ export default function PdbSettings() {
           )}
         </Stack>
       </Card>
+      <NewItemsSettings />
     </Box>
   );
 }

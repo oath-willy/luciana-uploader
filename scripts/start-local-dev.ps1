@@ -2,7 +2,8 @@ param(
   [int]$BackendPort = 8000,
   [int]$FrontendPort = 3000,
   [string]$ResourceGroup = "luciana_resource_group",
-  [string]$WebAppName = "luciana-backend"
+  [string]$WebAppName = "luciana-backend",
+  [string]$NewItemsSubscription = "sub-keystone-research-dev"
 )
 
 $ErrorActionPreference = "Stop"
@@ -44,6 +45,27 @@ $settings = az webapp config appsettings list `
 
 foreach ($setting in $settings) {
   [Environment]::SetEnvironmentVariable($setting.name, $setting.value, "Process")
+}
+
+$localDataDir = Join-Path $backendDir "data\codex"
+[Environment]::SetEnvironmentVariable("MC_CODE_LOCAL_DATA_DIR", $localDataDir, "Process")
+[Environment]::SetEnvironmentVariable("MC_CODE_RUNTIME_DB", (Join-Path $localDataDir "runtime.sqlite3"), "Process")
+[Environment]::SetEnvironmentVariable("PDB_REF_LOCAL_PATH", (Join-Path $localDataDir "ref_pdb_dump.parquet"), "Process")
+[Environment]::SetEnvironmentVariable("PDB_REF_STATUS_DB", (Join-Path $localDataDir "pdb-settings.sqlite3"), "Process")
+
+if (-not $env:PDB_NEW_ITEMS_STORAGE_CONNECTION_STRING -and -not $env:PDB_NEW_ITEMS_STORAGE_SECRET) {
+  $newItemsKey = az storage account keys list `
+    --subscription $NewItemsSubscription `
+    --account-name stkeystoneresearchdev `
+    --query '[0].value' -o tsv --only-show-errors
+  if ($LASTEXITCODE -eq 0 -and $newItemsKey) {
+    $newItemsConnection = "DefaultEndpointsProtocol=https;AccountName=stkeystoneresearchdev;AccountKey=$newItemsKey;EndpointSuffix=core.windows.net"
+    [Environment]::SetEnvironmentVariable("PDB_NEW_ITEMS_STORAGE_CONNECTION_STRING", $newItemsConnection, "Process")
+    $newItemsKey = $null
+    $newItemsConnection = $null
+  } else {
+    Write-Warning "New Items usera DefaultAzureCredential: occorre Storage Blob Data Reader sul container pdb."
+  }
 }
 
 [Environment]::SetEnvironmentVariable("FRONTEND_ORIGIN", "http://localhost:$FrontendPort", "Process")

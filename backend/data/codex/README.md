@@ -23,13 +23,40 @@ Il bootstrap o disaster recovery puo inviare un SQLite gia costruito a
 `PUT /api/mc-code/snapshot-file?environment=dev`. Il backend applica token dedicato,
 validazione di schema e contenuto, `quick_check` e sostituzione atomica.
 
+La sorgente degli item e ora `stkeystoneresearchdev/pdb/pdb_new_items.parquet`.
+In PDB Settings, **Recupera New Items** scarica il file mantenendo lo stesso nome in
+`backend/data/codex` (su Azure, nella directory persistente configurata).
+Il download e validato prima di aggiornare lo snapshot SQLite usato da MC CODE:
+il Parquet originale e conservato, mentre SQLite permette filtri e paginazione senza
+scaricare tutti gli item nel browser. `item_extra_descriptions` e un oggetto JSON;
+i suoi campi sono esposti nella vista FULL e inviati ai worker insieme agli altri dettagli.
+Job e scelte gia presenti nel runtime vengono conservati; vengono mantenute anche le
+proposte precedentemente importate per gli item ancora presenti nella nuova sorgente.
+Il recupero riguarda Dev; non copia i dati Dev nello snapshot Prod.
+
+Autenticazione: preferire la Managed Identity della Web App con **Storage Blob Data Reader**
+sul container `pdb`. In locale `DefaultAzureCredential` usa anche il login Azure CLI.
+In alternativa configurare `PDB_NEW_ITEMS_STORAGE_CONNECTION_STRING`, oppure il nome di un
+secret Key Vault in `PDB_NEW_ITEMS_STORAGE_SECRET` (vault `KEY_VAULT_NAME`). Non inserire
+credenziali nel frontend o nel repository. Stato e errori sono persistiti in
+`pdb-new-items-sync.sqlite3`. Gli endpoint sono `GET /api/pdb/settings/new-items` e
+`POST /api/pdb/settings/new-items/refresh`.
+La prima importazione richiede uno snapshot MC CODE con la reference canonica gia pubblicata.
+Lo script `scripts/start-local-dev.ps1` usa sempre la directory dati locale, anche quando
+importa le app settings Azure. In assenza di un secret o una connection string dedicata,
+prova a recuperare la chiave dello storage tramite il login Azure CLI sulla subscription
+`sub-keystone-research-dev` (parametro `NewItemsSubscription`): resta soltanto nell'ambiente
+del processo backend, non viene scritta in file o log. Se il login non permette questa
+lettura, occorre autorizzare Storage Blob Data Reader per l'autenticazione Azure diretta.
+
 Il Job `databricks/publish_mc_code_snapshot.py`, eseguito da un checkout Git del repository,
-pubblica lo snapshot operativo da `product_to_classify` e `codex_bs25_lookup`. La reference
+pubblica lo snapshot operativo da `pdb_new_items.parquet` e `codex_bs25_lookup`. Il widget
+`new_items_uri` permette di specificare la sorgente per ambiente. La reference
 canonica dei Master Code viene letta dal Parquet corrente indicato dal manifest
 `pdb_exports/ref_pdb_dump/latest.json`; non usa piu `dump_pdb_flats`.
 
 Il processo produttore deve scrivere soltanto dopo aver congelato e validato le sorgenti
-`product_to_classify`, `codex_bs25_lookup` e `ref_pdb_dump.parquet`. Non deve aggiornare il file
+`pdb_new_items.parquet`, `codex_bs25_lookup` e `ref_pdb_dump.parquet`. Non deve aggiornare il file
 SQLite direttamente su share remota e non deve inviare payload parziali.
 
 Il calcolo BS25 opzionale e delegato al servizio `pdb-bs25-worker` di lucianavm04. Il backend
