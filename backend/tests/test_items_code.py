@@ -1,5 +1,8 @@
 import json
 import os
+import sqlite3
+from contextlib import closing
+from concurrent.futures import ThreadPoolExecutor
 import tempfile
 import unittest
 from pathlib import Path
@@ -11,6 +14,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from api.items_code import router
+from services.mc_code_local_store import RuntimeStore
 
 
 class ItemsCodeTests(unittest.TestCase):
@@ -110,6 +114,54 @@ class ItemsCodeTests(unittest.TestCase):
         self.assertEqual(upper["total"], 1100)
         self.assertIsNone(upper["rows"][0]["master_code"])
         self.assertIn("inner_qty", upper["rows"][0])
+
+    def update(self, **kwargs):
+        return self.client.patch("/api/items-code/new-items/values", json=kwargs)
+
+    def test_edits_persist_merge_filter_and_preserve_explicit_null(self):
+        (self.root / "ref_pdb_dump.parquet").unlink()
+        response = self.update(company=" acme ", item_codes=["0000", "0001"],
+                               values={"prefix_code": "ABC", "father_name": "New family", "master_code": "02_03_01", "inner_qty": "12.25"})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(self.update(company="ACME", item_codes=["0000"], values={"pack": "Bottle", "father_name": None}).status_code, 200)
+        filtered = self.search("new-items", company="ACME", filters={"prefix_code": "ABC"}).json()
+        self.assertEqual(filtered["total"], 2)
+        self.assertIsNone(filtered["rows"][0]["father_name"])
+        self.assertEqual(filtered["rows"][0]["pack"], "Bottle")
+        self.assertEqual(filtered["rows"][1]["father_name"], "New family")
+        self.assertEqual(filtered["rows"][0]["inner_qty"], 12.25)
+        self.assertEqual(self.search("new-items", company="ACME", search="new family").json()["total"], 1)
+        with closing(sqlite3.connect(self.root / "runtime.sqlite3")) as db:
+            saved = json.loads(db.execute("SELECT values_json FROM items_code_edits WHERE company='ACME' AND item_code='0000'").fetchone()[0])
+        self.assertEqual(saved["prefix_code"], "ABC")
+        self.assertIsNone(saved["father_name"])
+        original = pq.read_table(self.root / "pdb_new_items.parquet").to_pylist()[0]
+        self.assertNotIn("prefix_code", original)
+
+    def test_invalid_batch_is_atomic_and_cannot_modify_other_companies_or_base_fields(self):
+        (self.root / "ref_pdb_dump.parquet").unlink()
+        for values in ({"description": "forbidden"}, {"master_code": "1_2_3"}, {"inner_qty": "NaN"},
+                       {"inner_qty": "1000000000000"}, {"inner_qty": "0.0000001"}, {"inner_qty": "text"}):
+            self.assertEqual(self.update(company="ACME", item_codes=["0000"], values=values).status_code, 400)
+        self.assertEqual(self.update(company="ACME", item_codes=["0000", "missing"], values={"pack": "Box"}).status_code, 400)
+        self.assertIsNone(self.search("new-items", company="ACME").json()["rows"][0]["pack"])
+        self.assertEqual(self.update(company="OTHER", item_codes=["0000"], values={"pack": "Box"}).status_code, 400)
+
+    def test_edits_survive_parquet_row_reordering(self):
+        (self.root / "ref_pdb_dump.parquet").unlink()
+        self.assertEqual(self.update(company="ACME", item_codes=["0000"], values={"pack": "Box"}).status_code, 200)
+        rows = pq.read_table(self.root / "pdb_new_items.parquet").to_pylist()
+        pq.write_table(pa.Table.from_pylist(list(reversed(rows))), self.root / "pdb_new_items.parquet")
+        result = self.search("new-items", company="ACME", filters={"pack": "Box"}).json()
+        self.assertEqual(result["total"], 1)
+        self.assertEqual(result["rows"][0]["item_code"], "0000")
+
+    def test_concurrent_saves_merge_independent_fields_without_losing_updates(self):
+        store = RuntimeStore()
+        updates = [{"prefix_code": "A"}, {"father_name": "B"}, {"pack": "C"}, {"feature": "D"}]
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            list(pool.map(lambda values: store.save_items_code_edits("ACME", ["0000"], values), updates))
+        self.assertEqual(store.items_code_edits("ACME")["0000"], {"prefix_code": "A", "father_name": "B", "pack": "C", "feature": "D"})
 
 
 if __name__ == "__main__":

@@ -303,6 +303,33 @@ class RuntimeStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._initialize()
 
+    def items_code_edits(self, company: str) -> dict[str, dict[str, Any]]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT item_code, values_json FROM items_code_edits WHERE company=?", (company,)
+            ).fetchall()
+        return {row["item_code"]: json.loads(row["values_json"]) for row in rows}
+
+    def save_items_code_edits(self, company: str, item_codes: list[str], values: dict[str, Any]) -> None:
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                for item_code in item_codes:
+                    previous = connection.execute(
+                        "SELECT values_json FROM items_code_edits WHERE company=? AND item_code=?", (company, item_code)
+                    ).fetchone()
+                    merged = json.loads(previous[0]) if previous else {}
+                    merged.update(values)
+                    connection.execute(
+                        "INSERT INTO items_code_edits(company, item_code, values_json, updated_at) VALUES(?,?,?,?) "
+                        "ON CONFLICT(company,item_code) DO UPDATE SET values_json=excluded.values_json, updated_at=excluded.updated_at",
+                        (company, item_code, json.dumps(merged, ensure_ascii=False), _utc_now()),
+                    )
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
+
     def create_job(
         self,
         environment: str,
@@ -609,6 +636,13 @@ class RuntimeStore:
                 connection.executescript(
                     """
                     PRAGMA journal_mode=WAL;
+                    CREATE TABLE IF NOT EXISTS items_code_edits (
+                        company TEXT NOT NULL,
+                        item_code TEXT NOT NULL,
+                        values_json TEXT NOT NULL,
+                        updated_at TEXT NOT NULL,
+                        PRIMARY KEY(company, item_code)
+                    );
                     CREATE TABLE IF NOT EXISTS aibs25_jobs (
                         environment TEXT NOT NULL,
                         company TEXT NOT NULL,

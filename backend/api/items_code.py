@@ -1,7 +1,9 @@
+from typing import Any
+
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from services.items_code import Dataset, dataset_metadata, search_dataset
+from services.items_code import Dataset, dataset_metadata, search_dataset, save_new_item_values
 from services.mc_code_local_store import SnapshotUnavailable
 
 
@@ -15,6 +17,22 @@ class DatasetSearch(BaseModel):
     page_size: int = 100
     search: str = Field(default="", max_length=2000)
     filters: dict[str, str] = Field(default_factory=dict)
+
+
+class ItemValuesUpdate(BaseModel):
+    company: str = Field(min_length=1, max_length=255)
+    item_codes: list[str] = Field(min_length=1, max_length=10000)
+    values: dict[str, Any]
+
+
+@router.patch("/new-items/values")
+def update_values(payload: ItemValuesUpdate):
+    try:
+        return save_new_item_values(payload.company, payload.item_codes, payload.values)
+    except SnapshotUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/{dataset}/metadata")

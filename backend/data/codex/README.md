@@ -136,3 +136,25 @@ Benchmark locale ripetibile, dalla cartella backend, senza chiamate a SQL o work
 
 Eventualmente aggiungere `--path C:\percorso\ref_pdb_dump.parquet`, `--search testo` o
 `--company NOME`. Il test lancia anche quattro filtri diversi contemporaneamente.
+
+### Modifiche Items Code
+
+La tabella superiore conserva i valori modificati in `runtime.sqlite3`, tabella
+`items_code_edits`, con chiave `(company, item_code)`. Non usa il numero di riga del
+Parquet come chiave persistente: riordinare o recuperare la sorgente non perde le modifiche.
+Il Parquet originale e le tabelle BS25/selezioni esistenti non vengono modificati.
+La lettura combina i valori salvati con la sorgente prima di ricerca, filtri e paginazione.
+Un valore NULL esplicito cancella il campo; un campo assente nella modifica conserva il
+valore precedente. Ogni salvataggio batch e atomico; la fusione delle sole colonne inviate
+avviene sotto una transazione SQLite, senza perdere aggiornamenti concorrenti su altri campi.
+
+`PATCH /api/items-code/new-items/values` riceve `company`, `item_codes` (massimo 10000)
+e `values`. Il server verifica esistenza e Company dei record, campi di supporto ammessi,
+precisione dei numeri e formato `00_00_00` del Master Code, prima di scrivere.
+Solo i campi da Prefix Code in poi della tabella superiore sono editabili.
+Invio salva la cella; Ctrl+Invio applica anche alle righe selezionate oppure, senza
+selezione, alle sole righe della pagina corrente. Escape/uscita dalla cella scartano
+il testo non confermato. Copia/incolla superiore usa una copia delle caratteristiche
+da Father Name in poi, escludendo i campi deselezionati nel menu; anche la copia dal
+Reference PDB passa per lo stesso salvataggio. La copia resta in memoria del browser
+fino al reload della pagina, mentre i valori incollati restano nel database runtime.

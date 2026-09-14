@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+from decimal import Decimal, InvalidOperation
 from array import array
 from contextlib import contextmanager
 from functools import lru_cache
@@ -13,7 +15,7 @@ import duckdb
 from services.items_code_browse_cache import (
     COMPANY, MATCH_CACHE_BYTES, QUERY_SLOTS, ROW_ID, SEARCH_TEXT, matches, ready_snapshot,
 )
-from services.mc_code_local_store import SnapshotUnavailable
+from services.mc_code_local_store import RuntimeStore, SnapshotUnavailable
 from services.pdb_new_items_sync import new_items_path
 from services.pdb_ref_sync import pdb_ref_local_path
 
@@ -27,6 +29,7 @@ SUPPORT_FIELDS = (
     ("pack_measure_unit", "VARCHAR"), ("feature", "VARCHAR"), ("measure", "VARCHAR"), ("extra", "VARCHAR"),
 )
 SUPPORT_EXCLUDED = {"company_item_code", "description", "dealer_company_name", "brand_name", "brand_prefix", "last_update"}
+EDITABLE_FIELDS = frozenset(field for field, _ in SUPPORT_FIELDS)
 
 
 def dataset_path(dataset: Dataset) -> Path:
@@ -108,7 +111,7 @@ def _extra_keys(stamp: tuple[str, int, int], company: str) -> tuple[str, ...]:
     return tuple(row[0] for row in rows)
 
 
-def _columns(stamp: tuple[str, int, int], dataset: Dataset, company: str) -> tuple[list[dict[str, str]], dict[str, str]]:
+def _columns(stamp: tuple[str, int, int], dataset: Dataset, company: str) -> tuple[list[dict[str, Any]], dict[str, str]]:
     fields = _schema(stamp)
     columns = [{"field": name, "header_name": name.replace("_", " ").title(), "data_type": kind} for name, kind in fields]
     expressions = {name: _identifier(name) for name, _ in fields}
@@ -143,6 +146,8 @@ def _columns(stamp: tuple[str, int, int], dataset: Dataset, company: str) -> tup
             if field not in SUPPORT_EXCLUDED and field not in expressions:
                 columns.append(column.copy())
                 expressions[field] = f"CAST(NULL AS {column['data_type']})"
+        for column in columns:
+            column["editable"] = column["field"] in EDITABLE_FIELDS
     return columns, expressions
 
 
@@ -164,6 +169,18 @@ def search_dataset(dataset: Dataset, company: str, page: int, page_size: int, se
     path = dataset_path(dataset)
     stamp = _stamp(path)
     columns, expressions = _columns(stamp, dataset, company)
+    edits = RuntimeStore().items_code_edits(company) if dataset == "new-items" else {}
+    if edits:
+        # Test key presence separately: an explicit JSON null must clear the source value.
+        for column in columns:
+            field = column["field"]
+            if field in EDITABLE_FIELDS:
+                json_path = _literal('$."' + field + '"')
+                expressions[field] = (
+                    f"CASE WHEN json_exists(__items_code_patch, {json_path}) "
+                    f"THEN CAST(json_extract_string(__items_code_patch, {json_path}) AS {column['data_type']}) "
+                    f"ELSE {expressions[field]} END"
+                )
     unknown = set(filters) - set(expressions)
     if unknown:
         raise ValueError(f"Filtro non supportato: {sorted(unknown)[0]}")
@@ -200,6 +217,13 @@ def search_dataset(dataset: Dataset, company: str, page: int, page_size: int, se
         total, rows = _reference_page(stamp, query_path, row_id, projection, where, parameters, page, page_size)
     else:
         with _connect(query_path) as connection:
+            if edits:
+                connection.execute("CREATE TEMP TABLE edit_overlay(item_code VARCHAR PRIMARY KEY, patch JSON)")
+                connection.executemany("INSERT INTO edit_overlay VALUES (?, ?)",
+                                       [(code, json.dumps(values)) for code, values in edits.items()])
+                connection.execute(f"CREATE VIEW original_source AS SELECT * FROM read_parquet({_literal(str(path))}, file_row_number=true)")
+                connection.execute("CREATE OR REPLACE VIEW source AS SELECT original_source.*, edit_overlay.patch AS __items_code_patch "
+                                   "FROM original_source LEFT JOIN edit_overlay ON original_source.item_code=edit_overlay.item_code")
             total = connection.execute(f"SELECT COUNT(*) FROM source{where}", parameters).fetchone()[0]
             rows = _read_rows(connection, f"SELECT {row_id} AS {_identifier(ROW_ID)}, {projection} FROM source{where} "
                               f"ORDER BY {row_id} LIMIT ? OFFSET ?", [*parameters, page_size, page * page_size])
@@ -274,3 +298,42 @@ def _read_rows(connection, sql: str, parameters: list[Any]) -> list[dict[str, An
 
 def _like(value: str) -> str:
     return "%" + value.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+
+
+def save_new_item_values(company: str, item_codes: list[str], values: dict[str, Any]) -> dict[str, Any]:
+    company = company.strip().upper()
+    if not company or not item_codes or not values:
+        raise ValueError("Company, record e valori sono obbligatori")
+    item_codes = list(dict.fromkeys(item_codes))
+    path = dataset_path("new-items")
+    columns, _ = _columns(_stamp(path), "new-items", company)
+    types = {column["field"]: column["data_type"] for column in columns if column["field"] in EDITABLE_FIELDS}
+    if set(values) - set(types):
+        raise ValueError("Si possono modificare solo i campi da Prefix Code in poi")
+    normalized: dict[str, Any] = {}
+    for field, value in values.items():
+        if value is None or value == "":
+            normalized[field] = None
+        elif types[field].startswith("DECIMAL"):
+            try:
+                number = Decimal(str(value))
+                precision, scale = map(int, re.findall(r"\d+", types[field]))
+                if not number.is_finite() or abs(number) >= Decimal(10) ** (precision - scale) or number != number.quantize(Decimal(10) ** -scale):
+                    raise ValueError()
+                normalized[field] = format(number, "f")
+            except (InvalidOperation, ValueError):
+                raise ValueError(f"Valore numerico non valido per {field}") from None
+        else:
+            if not isinstance(value, (str, int, float)) or len(str(value)) > 16000:
+                raise ValueError(f"Valore non valido per {field}")
+            normalized[field] = str(value)
+            if field == "master_code" and not re.fullmatch(r"\d{2}_\d{2}_\d{2}", normalized[field]):
+                raise ValueError("Master Code deve avere formato 00_00_00")
+    with _connect(path) as connection:
+        placeholders = ', '.join('?' for _ in item_codes)
+        rows = connection.execute(f"SELECT item_code FROM source WHERE {_company_expression(_schema(_stamp(path)))}=? "
+                                  f"AND item_code IN ({placeholders})", [company, *item_codes]).fetchall()
+    if {row[0] for row in rows} != set(item_codes):
+        raise ValueError("Uno o piu record non appartengono alla Company selezionata o non esistono piu")
+    RuntimeStore().save_items_code_edits(company, item_codes, normalized)
+    return {"item_codes": item_codes, "values": normalized}
