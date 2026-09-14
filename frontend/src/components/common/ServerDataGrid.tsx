@@ -27,6 +27,7 @@ export type ServerGridFetchParams = {
   pageSize: number;
   search: string;
   filters: Record<string, string>;
+  signal?: AbortSignal;
 };
 
 export type ServerGridResult = {
@@ -127,6 +128,8 @@ export default function ServerDataGrid({
       ids: new Set(),
     });
   const hasLoadedRows = useRef(false);
+  const selectionModelRef = useRef(rowSelectionModel);
+  selectionModelRef.current = rowSelectionModel;
   const selectionRowsCache = useRef<Map<number | string, any>>(new Map());
   const gridApiRef = useGridApiRef();
 
@@ -164,7 +167,7 @@ export default function ServerDataGrid({
     return () => window.clearTimeout(timeout);
   }, [search, columnFilters]);
 
-  const loadRows = useCallback(async () => {
+  const loadRows = useCallback(async (signal: AbortSignal) => {
     if (!silentRefresh || !hasLoadedRows.current) {
       setLoading(true);
     }
@@ -176,9 +179,15 @@ export default function ServerDataGrid({
         pageSize: paginationModel.pageSize,
         search: debouncedSearch,
         filters: debouncedColumnFilters,
+        signal,
       });
 
+      if (signal.aborted) return;
       setRows(result.rows);
+      const selection = selectionModelRef.current;
+      selectionRowsCache.current.forEach((_, id) => {
+        if (selection.type !== "include" || !selection.ids.has(id)) selectionRowsCache.current.delete(id);
+      });
       result.rows.forEach((row) => {
         const id = getRowId ? getRowId(row) : row.id;
         selectionRowsCache.current.set(id, row);
@@ -187,11 +196,12 @@ export default function ServerDataGrid({
       hasLoadedRows.current = true;
       onRowsChange?.(result.rows);
     } catch (err: any) {
+      if (signal.aborted) return;
       setRows([]);
       setRowCount(0);
       setError(err.message || "Errore caricamento dati");
     } finally {
-      setLoading(false);
+      if (!signal.aborted) setLoading(false);
     }
   }, [
     fetchRows,
@@ -204,7 +214,9 @@ export default function ServerDataGrid({
   ]);
 
   useEffect(() => {
-    loadRows();
+    const controller = new AbortController();
+    loadRows(controller.signal);
+    return () => controller.abort();
   }, [loadRows, refreshToken]);
 
   useEffect(() => {

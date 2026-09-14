@@ -14,3 +14,4 @@ sqlalchemy
 pyodbc
 pyarrow>=18,<26
 duckdb>=1.3,<2
+filelock>=3.16,<4

@@ -25,6 +25,7 @@ export async function fetchDatasetMetadata(dataset: DatasetName, company: string
 export async function fetchDatasetRows(dataset: DatasetName, company: string, params: ServerGridFetchParams): Promise<ServerGridResult> {
   return responseData(await fetch(`${backendBaseUrl}/api/items-code/${dataset}/search`, {
     method: "POST", headers: { "Content-Type": "application/json" },
+    signal: params.signal,
     body: JSON.stringify({ company, page: params.page, page_size: params.pageSize, search: params.search, filters: params.filters }),
   }));
 }

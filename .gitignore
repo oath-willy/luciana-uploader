@@ -36,4 +36,5 @@ backend/data/codex/*.sqlite3
 backend/data/codex/*.sqlite3-*
 backend/data/codex/*.tmp
 backend/data/codex/*.parquet
+backend/data/codex/.items-code-cache/
 backend/.local-ui-test*/

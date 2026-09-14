@@ -82,3 +82,57 @@ stesso percorso. Il default sotto `backend/data/codex` serve soltanto allo svilu
 
 Con `BS25AI_MOCK_MODE=true` il contratto verso lucianavm04 viene simulato e i risultati sono
 marcati esplicitamente `SIMULAZIONE`. Disattivare la variabile quando il worker reale e pronto.
+
+## Browsing Reference PDB in items-code
+
+La vista iniziale comprende tutte le company, ma l'API restituisce solo la pagina richiesta
+(default 100 righe). I filtri generali e per colonna sono applicati all'intero dataset, con
+ricerca case-insensitive di sottostringhe letterali: `%` e `_` non sono wildcard.
+
+Al primo accesso viene preparato in background un Parquet derivato in `.items-code-cache`,
+con blocchi da 16.384 righe, identificativi stabili, Company normalizzata, Master Code
+precalcolato e testo di ricerca generale. Il file originale `ref_pdb_dump.parquet` rimane
+inalterato. Durante la preparazione, o se fallisce, si continua a leggere l'originale.
+La pubblicazione e atomica e protetta da lock anche fra processi backend; dimensione e data
+di modifica della sorgente invalidano automaticamente snapshot e risultati dei filtri.
+Modifiche alle espressioni precalcolate richiedono di incrementare `CACHE_VERSION` in
+`items_code_browse_cache.py`, per non riutilizzare copie preparate dal codice precedente.
+Si conservano almeno gli ultimi due snapshot; quelli ulteriori vengono eliminati dopo un
+giorno, alla preparazione successiva. Un aggiornamento deve sostituire atomicamente il
+Parquet, come fa il recupero da PDB Settings, non modificarlo mentre viene letto.
+
+La prima ricerca con un nuovo filtro richiede ancora una scansione. Conteggio esatto e
+identificativi dei risultati vengono poi riutilizzati per le pagine successive, in una LRU
+di massimo 64 MB e 32 filtri per processo. Gli identificativi usano 32 bit quando possibile
+(64 bit per file oltre quattro miliardi di righe), permettendo di conservare insieme anche
+quattro filtri che coprono tutto il dataset attuale. Non si conservano le righe complete in RAM.
+Richieste identiche nello stesso processo condividono la scansione in corso; filtri diversi
+non interferiscono. La paginazione senza filtri usa un intervallo di identificativi, senza
+un ordinamento di milioni di righe con OFFSET. La memoria cache e un limite, non una
+prenotazione: cresce solo quando serve. Filtri con troppi risultati mantengono il conteggio
+senza memorizzare tutti gli identificativi e usano la paginazione SQL come fallback.
+
+Ogni processo ammette al massimo due query DuckDB contemporanee, ciascuna con budget 128 MB
+e due thread. La preparazione usa uno degli stessi slot, un thread e budget 256 MB.
+Con i due worker di `backend/startup.txt` si hanno quattro slot query e al massimo 128 MB
+di cache risultati, oltre alla memoria dell'applicazione, dei risultati temporanei e del
+sistema operativo. Non e un limite alla RAM totale del processo. Quattro utenti possono
+quindi navigare insieme senza generare query e cache illimitate. Il browser cancella le
+richieste obsolete, ignora risposte tardive e conserva solo pagina corrente e righe
+selezionate, non tutte le pagine visitate. La cancellazione HTTP non garantisce
+l'interruzione di una scansione gia avviata nel backend.
+
+`ITEMS_CODE_BROWSE_CACHE_DIR` puo spostare la cache su un disco locale veloce; il default e
+accanto al Parquet, sul volume persistente. `ITEMS_CODE_BROWSE_CACHE_ENABLED=false`
+disabilita lo snapshot derivato per diagnosi (paginazione e cache dei filtri restano attive).
+La copia tecnica del dataset corrente occupa circa 192 MB e si prepara in circa 6 secondi
+sul computer di sviluppo; le prestazioni Azure vanno misurate separatamente.
+
+Benchmark locale ripetibile, dalla cartella backend, senza chiamate a SQL o worker:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\benchmark_items_code.py
+```
+
+Eventualmente aggiungere `--path C:\percorso\ref_pdb_dump.parquet`, `--search testo` o
+`--company NOME`. Il test lancia anche quattro filtri diversi contemporaneamente.

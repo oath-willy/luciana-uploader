@@ -21,6 +21,7 @@ class ItemsCodeTests(unittest.TestCase):
             "MC_CODE_LOCAL_DATA_DIR": str(self.root),
             "PDB_REF_LOCAL_PATH": str(self.root / "ref_pdb_dump.parquet"),
             "ITEMS_CODE_PDB_LOCAL_PATH": "",
+            "ITEMS_CODE_BROWSE_CACHE_ENABLED": "false",
         })
         self.environment.start()
         extras = {f"field_{index}": [f"value{index}"] for index in range(15)}
