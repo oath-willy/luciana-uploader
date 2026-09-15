@@ -7,6 +7,11 @@ jest.mock("@mui/x-data-grid", () => ({
   DataGrid: (props: any) => (
     <div>
       <div data-testid="rows">{JSON.stringify(props.rows)}</div>
+      {props.rows.map((row: any) => <div className="MuiDataGrid-row" data-id={row.id} key={row.id}>
+        <button>Row {row.id}</button>
+        <input aria-label={`Edit ${row.id}`} onClick={(event) => event.stopPropagation()} />
+        <div data-field="__check__"><button onClick={() => props.onRowSelectionModelChange({ type: "include", ids: new Set([row.id]) })}>Checkbox {row.id}</button></div>
+      </div>)}
       <button onClick={() => props.onPaginationModelChange({ page: props.paginationModel.page + 1, pageSize: 25 })}>Next page</button>
       <button onClick={() => props.onRowSelectionModelChange({ type: "include", ids: new Set([props.rows[0].id]) })}>Select first</button>
     </div>
@@ -37,6 +42,25 @@ test("aborts obsolete requests and ignores their late responses", async () => {
   const newSignal = fetchRows.mock.calls[1][0].signal;
   view.unmount();
   expect(newSignal?.aborted).toBe(true);
+});
+
+test("Ctrl+click toggles rows additively, including editable cells, without intercepting checkboxes", async () => {
+  const data = [{ id: 1 }, { id: 2 }];
+  const fetchRows = async () => ({ rows: data, total: 2 });
+  const selection = jest.fn();
+  render(<ServerDataGrid title="Test" columns={[{ field: "id" }]} fetchRows={fetchRows}
+    ctrlClickSelection onSelectionChange={selection} />);
+  await screen.findByText("Row 1");
+  fireEvent.click(screen.getByText("Row 1"));
+  expect(selection).toHaveBeenLastCalledWith(new Set(), []);
+  fireEvent.click(screen.getByText("Row 1"), { ctrlKey: true });
+  await waitFor(() => expect(selection).toHaveBeenLastCalledWith(new Set([1]), [data[0]]));
+  fireEvent.click(screen.getByLabelText("Edit 2"), { ctrlKey: true });
+  await waitFor(() => expect(selection).toHaveBeenLastCalledWith(new Set([1, 2]), data));
+  fireEvent.click(screen.getByText("Row 1"), { ctrlKey: true });
+  await waitFor(() => expect(selection).toHaveBeenLastCalledWith(new Set([2]), [data[1]]));
+  fireEvent.click(screen.getByText("Checkbox 1"), { ctrlKey: true });
+  await waitFor(() => expect(selection).toHaveBeenLastCalledWith(new Set([1]), [data[0]]));
 });
 
 test("preserves selected row data when evicting previously visited pages", async () => {

@@ -15,10 +15,10 @@ jest.mock("../common/ServerDataGrid", () => {
       });
     }, [props.fetchRows, props.refreshToken, props.onRowsChange]);
     React.useEffect(() => {
-      props.onSelectionChange?.(selected, rows.filter((row: any) => selected.has(row.__items_code_row_id)).map(props.transformRow));
+      props.onSelectionChange?.(selected, rows.filter((row: any) => selected.has(row.__items_code_row_id)).map((row: any) => props.transformRow ? props.transformRow(row) : row));
     }, [selected, rows, props.transformRow, props.onSelectionChange]);
     return <div>{props.toolbarLeft}{props.toolbarRight}{rows.map((raw: any) => {
-      const row = props.transformRow(raw);
+      const row = props.transformRow ? props.transformRow(raw) : raw;
       return <div key={row.item_code}>
         <input type="checkbox" aria-label={`Select ${row.item_code}`} checked={selected.has(row.__items_code_row_id)}
           onChange={() => setSelected((current: Set<number>) => {
@@ -28,6 +28,17 @@ jest.mock("../common/ServerDataGrid", () => {
       </div>;
     })}</div>;
   }};
+});
+
+test("Reference waits for a selection and FULL PDB sends no company filter", async () => {
+  render(<DatasetTable dataset="pdb" title="Reference PDB" requireCompany />);
+  const company = await screen.findByRole("combobox", { name: "SELECT COMPANY" });
+  await waitFor(() => expect(fetchDatasetMetadata).toHaveBeenCalled());
+  expect(fetchDatasetRows).not.toHaveBeenCalled();
+  fireEvent.keyDown(company, { key: "ArrowDown" });
+  expect(screen.getAllByRole("option")[0]).toHaveTextContent("- FULL PDB -");
+  fireEvent.click(screen.getByRole("option", { name: "- FULL PDB -" }));
+  await waitFor(() => expect(fetchDatasetRows).toHaveBeenCalledWith("pdb", "", expect.any(Object)));
 });
 
 let records: any[];

@@ -139,6 +139,19 @@ Eventualmente aggiungere `--path C:\percorso\ref_pdb_dump.parquet`, `--search te
 
 ### Modifiche Items Code
 
+Reference PDB e nascosto all'apertura. Il toggle monta la seconda tabella, ma le righe
+vengono richieste solo dopo una scelta esplicita: Company oppure `- FULL PDB -`.
+I metadati non avviano la preparazione dello snapshot completo.
+
+Per New Items, i dati sorgente e le colonne JSON espanse sono preparati per Company
+e riutilizzati come tabelle Arrow immutabili: cache LRU di massimo 64 MiB e 8 Company
+per processo. Le richieste concorrenti per la stessa Company condividono la preparazione.
+Percorso, data di modifica, dimensione del Parquet e proiezione delle colonne identificano
+la versione della cache. Le modifiche SQLite vengono sempre lette nuovamente e unite
+prima dei filtri: non vengono conservate nella cache dei dati sorgente.
+I due worker possono trattenere fino a 128 MiB aggiuntivi per questa cache, non l'intero
+Reference PDB; il limite non comprende allocazioni temporanee o il resto dell'applicazione.
+
 La tabella superiore conserva i valori modificati in `runtime.sqlite3`, tabella
 `items_code_edits`, con chiave `(company, item_code)`. Non usa il numero di riga del
 Parquet come chiave persistente: riordinare o recuperare la sorgente non perde le modifiche.

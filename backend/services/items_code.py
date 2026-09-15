@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Any, Literal
 
 import duckdb
+import pyarrow as pa
+from services.items_code_company_cache import companies as company_cache
 
 from services.items_code_browse_cache import (
     COMPANY, MATCH_CACHE_BYTES, QUERY_SLOTS, ROW_ID, SEARCH_TEXT, matches, ready_snapshot,
@@ -50,11 +52,17 @@ def _literal(value: str) -> str:
 
 
 @contextmanager
+def _query_connection():
+    with QUERY_SLOTS, duckdb.connect(config={"threads": 2, "memory_limit": "128MB"}) as connection:
+        connection.execute("SET enable_progress_bar = false")
+        yield connection
+
+
+@contextmanager
 def _connect(path: Path):
     if not path.is_file():
         raise SnapshotUnavailable(f"File {path.name} assente. Recuperarlo da PDB Settings.")
-    with QUERY_SLOTS, duckdb.connect(config={"threads": 2, "memory_limit": "128MB"}) as connection:
-        connection.execute("SET enable_progress_bar = false")
+    with _query_connection() as connection:
         connection.execute(f"CREATE VIEW source AS SELECT * FROM read_parquet({_literal(str(path))}, file_row_number=true)")
         yield connection
 
@@ -156,9 +164,7 @@ def dataset_metadata(dataset: Dataset, company: str = "") -> dict[str, Any]:
     if not path.is_file():
         return {"available": False, "source_file": path.name, "companies": [], "columns": [], "message": f"Recuperare {path.name} da PDB Settings."}
     stamp = _stamp(path)
-    columns, expressions = _columns(stamp, dataset, company.strip().upper())
-    if dataset == "pdb":
-        ready_snapshot(path, expressions, _company_expression(_schema(stamp)))
+    columns, _ = _columns(stamp, dataset, company.strip().upper())
     return {"available": True, "source_file": path.name, "companies": list(_companies(stamp)), "columns": columns, "message": None}
 
 
@@ -169,6 +175,21 @@ def search_dataset(dataset: Dataset, company: str, page: int, page_size: int, se
     path = dataset_path(dataset)
     stamp = _stamp(path)
     columns, expressions = _columns(stamp, dataset, company)
+    unknown = set(filters) - set(expressions)
+    if unknown:
+        raise ValueError(f"Filtro non supportato: {sorted(unknown)[0]}")
+    company_table = None
+    if dataset == "new-items":
+        key = (stamp, company, tuple(expressions.items()))
+        def load_company():
+            projection = ', '.join(f"{expression} AS {_identifier(field)}" for field, expression in expressions.items())
+            with _connect(path) as connection:
+                return connection.execute(
+                    f"SELECT file_row_number AS {_identifier(ROW_ID)}, {projection} FROM source "
+                    f"WHERE {_company_expression(_schema(stamp))}=?", [company]
+                ).fetch_arrow_table()
+        company_table = company_cache.get(key, load_company)
+        expressions = {field: _identifier(field) for field in expressions}
     edits = RuntimeStore().items_code_edits(company) if dataset == "new-items" else {}
     if edits:
         # Test key presence separately: an explicit JSON null must clear the source value.
@@ -185,7 +206,7 @@ def search_dataset(dataset: Dataset, company: str, page: int, page_size: int, se
     if unknown:
         raise ValueError(f"Filtro non supportato: {sorted(unknown)[0]}")
     query_path = path
-    row_id = "file_row_number"
+    row_id = _identifier(ROW_ID) if company_table is not None else "file_row_number"
     company_expression = _company_expression(_schema(stamp))
     prepared = None
     if dataset == "pdb":
@@ -197,7 +218,7 @@ def search_dataset(dataset: Dataset, company: str, page: int, page_size: int, se
             company_expression = _identifier(COMPANY)
     clauses: list[str] = []
     parameters: list[Any] = []
-    if company:
+    if company and company_table is None:
         clauses.append(company_expression + " = ?")
         parameters.append(company)
     if search.strip():
@@ -216,15 +237,14 @@ def search_dataset(dataset: Dataset, company: str, page: int, page_size: int, se
     if dataset == "pdb":
         total, rows = _reference_page(stamp, query_path, row_id, projection, where, parameters, page, page_size)
     else:
-        with _connect(query_path) as connection:
+        with _query_connection() as connection:
+            connection.register("company_source", company_table)
+            connection.execute("CREATE OR REPLACE VIEW source AS SELECT * FROM company_source")
             if edits:
-                connection.execute("CREATE TEMP TABLE edit_overlay(item_code VARCHAR PRIMARY KEY, patch JSON)")
-                connection.executemany("INSERT INTO edit_overlay VALUES (?, ?)",
-                                       [(code, json.dumps(values)) for code, values in edits.items()])
-                connection.execute(f"CREATE VIEW original_source AS SELECT * FROM read_parquet({_literal(str(path))}, file_row_number=true)")
-                connection.execute("CREATE OR REPLACE VIEW source AS SELECT original_source.*, edit_overlay.patch AS __items_code_patch "
-                                   "FROM original_source LEFT JOIN edit_overlay ON original_source.item_code=edit_overlay.item_code")
-            total = connection.execute(f"SELECT COUNT(*) FROM source{where}", parameters).fetchone()[0]
+                connection.register("edit_overlay", pa.table({"item_code": list(edits), "patch": [json.dumps(v) for v in edits.values()]}))
+                connection.execute("CREATE OR REPLACE VIEW source AS SELECT company_source.*, edit_overlay.patch AS __items_code_patch "
+                                   "FROM company_source LEFT JOIN edit_overlay ON company_source.item_code=edit_overlay.item_code")
+            total = company_table.num_rows if not where else connection.execute(f"SELECT COUNT(*) FROM source{where}", parameters).fetchone()[0]
             rows = _read_rows(connection, f"SELECT {row_id} AS {_identifier(ROW_ID)}, {projection} FROM source{where} "
                               f"ORDER BY {row_id} LIMIT ? OFFSET ?", [*parameters, page_size, page * page_size])
     for row in rows:

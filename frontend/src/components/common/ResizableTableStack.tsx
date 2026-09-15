@@ -6,7 +6,7 @@ const MIN_SPLIT = 20;
 const MAX_SPLIT = 80;
 const clamp = (value: number) => Math.min(MAX_SPLIT, Math.max(MIN_SPLIT, value));
 
-export default function ResizableTableStack({ top, bottom }: { top: ReactNode; bottom: ReactNode }) {
+export default function ResizableTableStack({ top, bottom }: { top: ReactNode; bottom?: ReactNode }) {
   const container = useRef<HTMLDivElement>(null);
   const drag = useRef<{ pointerId: number; startY: number; startSplit: number; height: number } | null>(null);
   const [split, setSplit] = useState(50);
@@ -19,11 +19,11 @@ export default function ResizableTableStack({ top, bottom }: { top: ReactNode; b
 
   return (
     <Box ref={container} sx={{ minHeight: 0, minWidth: 0, height: "100%", display: "grid",
-      gridTemplateRows: `minmax(0, ${split}fr) 20px minmax(0, ${100 - split}fr)`,
+      gridTemplateRows: bottom ? `minmax(0, ${split}fr) 20px minmax(0, ${100 - split}fr)` : "minmax(0, 1fr)",
       userSelect: dragging ? "none" : undefined,
     }}>
       <Box sx={{ minHeight: 0, minWidth: 0 }}>{top}</Box>
-      <Box role="separator" tabIndex={0} aria-label="Ridimensiona le tabelle"
+      {bottom && <Box role="separator" tabIndex={0} aria-label="Ridimensiona le tabelle"
         aria-orientation="horizontal" aria-valuemin={MIN_SPLIT} aria-valuemax={MAX_SPLIT}
         aria-valuenow={Math.round(split)} aria-valuetext={`${Math.round(split)}% tabella superiore`}
         onPointerDown={(event) => {
@@ -62,8 +62,8 @@ export default function ResizableTableStack({ top, bottom }: { top: ReactNode; b
           "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: -2 },
         }}>
         <GripHorizontal size={20} aria-hidden="true" style={{ position: "relative", background: "inherit" }} />
-      </Box>
-      <Box sx={{ minHeight: 0, minWidth: 0 }}>{bottom}</Box>
+      </Box>}
+      {bottom && <Box sx={{ minHeight: 0, minWidth: 0 }}>{bottom}</Box>}
     </Box>
   );
 }

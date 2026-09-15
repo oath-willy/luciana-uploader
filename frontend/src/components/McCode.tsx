@@ -1565,8 +1565,8 @@ export default function McCode() {
         ...mcCodeTypographyStyles,
         zoom: MC_CODE_LAYOUT_SCALE,
         height: `calc((100dvh - 16px) / ${MC_CODE_LAYOUT_SCALE})`,
-        width: `calc(100% / ${MC_CODE_LAYOUT_SCALE})`,
-        maxWidth: `calc(100% / ${MC_CODE_LAYOUT_SCALE})`,
+        width: "100%",
+        maxWidth: "100%",
         minHeight: 0,
         minWidth: 0,
         overflow: "hidden",
@@ -2197,6 +2197,8 @@ function McCodeDetailPanel({
       sx={{
         height: "100%",
         minHeight: 0,
+        minWidth: 0,
+        maxWidth: "100%",
         overflow: "hidden",
         borderRadius: 1,
       }}
@@ -2212,7 +2214,7 @@ function McCodeDetailPanel({
           borderColor: "divider",
         }}
       >
-        <Box sx={{ minWidth: 0 }}>
+        <Box sx={{ minWidth: 0, flex: 1 }}>
           <Typography variant="subtitle1" fontWeight={700} noWrap>
             {row.company_item_code || "Dettaglio record"}
           </Typography>
@@ -2221,7 +2223,7 @@ function McCodeDetailPanel({
           </Typography>
         </Box>
         <Tooltip title="Chiudi">
-          <IconButton size="small" onClick={onClose} aria-label="Chiudi dettaglio">
+          <IconButton size="small" sx={{ flexShrink: 0 }} onClick={onClose} aria-label="Chiudi dettaglio">
             <X size={18} />
           </IconButton>
         </Tooltip>

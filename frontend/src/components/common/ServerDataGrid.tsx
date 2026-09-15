@@ -73,6 +73,7 @@ type ServerDataGridProps = {
   singleSelection?: boolean;
   visibleRowsSelection?: boolean;
   transformRow?: (row: any) => any;
+  ctrlClickSelection?: boolean;
 };
 
 export default function ServerDataGrid({
@@ -109,6 +110,7 @@ export default function ServerDataGrid({
   singleSelection = false,
   visibleRowsSelection = false,
   transformRow,
+  ctrlClickSelection = false,
 }: ServerDataGridProps) {
   const [rows, setRows] = useState<any[]>([]);
   const [rowCount, setRowCount] = useState(0);
@@ -412,6 +414,26 @@ export default function ServerDataGrid({
 
   return (
     <Box
+      onClickCapture={(event) => {
+        if (!ctrlClickSelection || !event.ctrlKey) return;
+        const target = event.target as HTMLElement;
+        if (target.closest('[data-field="__check__"], input[type="checkbox"]')) return;
+        const rowElement = target.closest('.MuiDataGrid-row[data-id]');
+        if (!rowElement) return;
+        const entry = Array.from(selectionRowsCache.current.entries())
+          .find(([id]) => String(id) === rowElement.getAttribute('data-id'));
+        if (!entry) return;
+        const [id, row] = entry;
+        if (isRowSelectable && !isRowSelectable({ id, row, columns })) return;
+        event.preventDefault();
+        event.stopPropagation();
+        setRowSelectionModel((current) => {
+          const ids = new Set<number | string>(current.type === 'include' ? current.ids : []);
+          if (ids.has(id)) ids.delete(id);
+          else { if (singleSelection) ids.clear(); ids.add(id); }
+          return { type: 'include', ids };
+        });
+      }}
       sx={{
         height,
         width: "100%",
@@ -442,6 +464,7 @@ export default function ServerDataGrid({
             flex: "1 1 640px",
             minWidth: 0,
             maxWidth: "100%",
+            "& .MuiDataGrid-scrollbar--horizontal": { overflowX: "scroll" },
             flexWrap: "wrap",
           }}
         >
@@ -547,6 +570,7 @@ export default function ServerDataGrid({
           columnVisibilityModel={columnVisibilityModel}
           getRowId={getRowId}
           loading={loading}
+          scrollbarSize={16}
           rowHeight={rowHeight}
           getRowHeight={getRowHeight}
           getEstimatedRowHeight={() => estimatedRowHeight}

@@ -59,6 +59,19 @@ class ItemsCodeTests(unittest.TestCase):
         other = self.client.get("/api/items-code/new-items/metadata?company=OTHER").json()
         self.assertNotIn("item_extra_descriptions.field_14", [column["field"] for column in other["columns"]])
 
+    def test_cached_company_filter_does_not_reopen_parquet_and_edits_stay_fresh(self):
+        self.assertEqual(self.search("new-items", company="ACME").status_code, 200)
+        RuntimeStore().save_items_code_edits("ACME", ["0000"], {"pack": "fresh"})
+        with patch("services.items_code._connect", side_effect=AssertionError("Parquet reopened")):
+            result = self.search("new-items", company="ACME", filters={"pack": "fresh"}).json()
+        self.assertEqual(result["total"], 1)
+        self.assertEqual(result["rows"][0]["pack"], "fresh")
+
+    def test_reference_metadata_does_not_prepare_full_snapshot(self):
+        with patch("services.items_code.ready_snapshot") as prepare:
+            self.assertEqual(self.client.get("/api/items-code/pdb/metadata").status_code, 200)
+            prepare.assert_not_called()
+
     def test_server_pagination_and_json_filters_cover_all_matching_rows(self):
         first = self.search("new-items", company="ACME", page_size=1000,
                             filters={"item_extra_descriptions.odd.'key": "100%_literal"}).json()

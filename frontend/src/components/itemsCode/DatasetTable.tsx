@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Autocomplete, Box, Checkbox, CircularProgress, FormControl, FormControlLabel, IconButton, InputLabel, ListItemText, MenuItem, Select, Switch, TextField, Tooltip } from "@mui/material";
 import { GridColDef } from "@mui/x-data-grid";
-import { ClipboardPaste, Copy, RefreshCw } from "lucide-react";
+import { ClipboardPaste, Copy, PanelBottom, RefreshCw } from "lucide-react";
 import CommitCell from "../common/CommitCell";
 import ServerDataGrid, { ServerGridFetchParams } from "../common/ServerDataGrid";
 import { DatasetMetadata, DatasetName, fetchDatasetMetadata, fetchDatasetRows, saveItemValues } from "./itemsCodeApi";
@@ -9,6 +9,8 @@ import { DatasetMetadata, DatasetName, fetchDatasetMetadata, fetchDatasetRows, s
 const getRowId = (row: Record<string, any>) => row.__items_code_row_id;
 const editKey = (row: Record<string, any>) => JSON.stringify([row.company, row.item_code]);
 const pageSizes = [25, 50, 100, 250, 500, 1000];
+const FULL_PDB = "- FULL PDB -";
+const frozenNewItemColumns = [{ field: "__check__" }, { field: "company" }, { field: "item_code" }];
 const isExtraColumn = (field: string) => field === "item_extra_descriptions" || field.startsWith("item_extra_descriptions.");
 
 export type ReferenceSelection = { row: Record<string, any>; fields: string[] };
@@ -24,12 +26,15 @@ function ItemEditCell({ row, field, value, label }: { row: Record<string, any>; 
     onCommit={(value, many) => editing.commit(row, field, value, many)} />;
 }
 
-export default function DatasetTable({ dataset, title, requireCompany = false, referenceSelection, onReferenceSelection }: {
+export default function DatasetTable({ dataset, title, requireCompany = false, referenceSelection, onReferenceSelection, referenceVisible, onReferenceVisibleChange }: {
   dataset: DatasetName; title: string; requireCompany?: boolean;
   referenceSelection?: ReferenceSelection | null;
   onReferenceSelection?: (selection: ReferenceSelection | null) => void;
+  referenceVisible?: boolean;
+  onReferenceVisibleChange?: (visible: boolean) => void;
 }) {
   const [company, setCompany] = useState("");
+  const effectiveCompany = dataset === "pdb" && company === FULL_PDB ? "" : company;
   const [metadata, setMetadata] = useState<DatasetMetadata | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -104,12 +109,12 @@ export default function DatasetTable({ dataset, title, requireCompany = false, r
     const controller = new AbortController();
     setLoading(true);
     setError("");
-    fetchDatasetMetadata(dataset, company, controller.signal)
-      .then(setMetadata)
+    fetchDatasetMetadata(dataset, effectiveCompany, controller.signal)
+      .then((data) => { if (!controller.signal.aborted) setMetadata(data); })
       .catch((err) => { if (err.name !== "AbortError") setError(err.message); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [dataset, company, refreshToken]);
+  }, [dataset, effectiveCompany, refreshToken]);
 
   const columns = useMemo<GridColDef[]>(() => (metadata?.columns || []).map((column) => ({
     field: column.field, headerName: column.header_name, sortable: false,
@@ -128,8 +133,8 @@ export default function DatasetTable({ dataset, title, requireCompany = false, r
 
   const fetchRows = useCallback((params: ServerGridFetchParams) => {
     if (!metadata?.available || (requireCompany && !company)) return Promise.resolve({ rows: [], total: 0 });
-    return fetchDatasetRows(dataset, company, params);
-  }, [dataset, company, metadata?.available, requireCompany]);
+    return fetchDatasetRows(dataset, effectiveCompany, params);
+  }, [dataset, company, effectiveCompany, metadata?.available, requireCompany]);
 
   return (
     <Box component="section" sx={{ minHeight: 0, minWidth: 0, height: "100%", display: "flex", flexDirection: "column",
@@ -146,6 +151,8 @@ export default function DatasetTable({ dataset, title, requireCompany = false, r
         columnVisibilityModel={columnVisibilityModel}
         checkboxSelection={dataset === "new-items"}
         visibleRowsSelection={dataset === "new-items"}
+        ctrlClickSelection={dataset === "new-items"}
+        frozenColumns={dataset === "new-items" ? frozenNewItemColumns : undefined}
         singleSelection={dataset === "pdb"}
         onSelectionChange={handleSelectionChange}
         onRowsChange={handleRowsChange}
@@ -153,10 +160,10 @@ export default function DatasetTable({ dataset, title, requireCompany = false, r
         emptyMessage={loading ? "Caricamento..." : requireCompany && !company ? "Seleziona una Company" : "Nessun dato"}
         toolbarLeft={
           <>
-          <Autocomplete size="small" options={metadata?.companies || []} value={company || null} disabled={saving}
+          <Autocomplete size="small" options={dataset === "pdb" ? [FULL_PDB, ...(metadata?.companies || [])] : metadata?.companies || []} value={company || null} disabled={saving}
             onChange={(_, value) => { setDrafts({}); setSelectedRows([]); onReferenceSelection?.(null); setCompany(value || ""); }} loading={loading}
             sx={{ width: 280, maxWidth: "100%" }}
-            renderInput={(params) => <TextField {...params} label={requireCompany ? "Company" : "Company (tutte)"} />}
+            renderInput={(params) => <TextField {...params} label={dataset === "pdb" ? "SELECT COMPANY" : requireCompany ? "Company" : "Company (tutte)"} />}
           />
           {dataset === "pdb" && <FormControl size="small" sx={{ width: 230, maxWidth: "100%" }}>
             <InputLabel shrink id="items-code-copy-fields-label">Campi da copiare</InputLabel>
@@ -178,6 +185,9 @@ export default function DatasetTable({ dataset, title, requireCompany = false, r
           {dataset === "new-items" && <FormControlLabel label="Colonne extra" control={
             <Switch size="small" checked={showExtraColumns} onChange={(_, checked) => setShowExtraColumns(checked)} />
           } />}
+          {dataset === "new-items" && onReferenceVisibleChange && <FormControlLabel
+            label={<Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}><PanelBottom size={18} />Reference PDB</Box>}
+            control={<Switch size="small" checked={!!referenceVisible} onChange={(_, checked) => onReferenceVisibleChange(checked)} />} />}
           {dataset === "new-items" && <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
             <FormControl size="small" sx={{ width: 190 }}>
               <InputLabel shrink id="items-code-paste-fields-label">Campi da incollare</InputLabel>
