@@ -60,6 +60,7 @@ class NewItemsTests(unittest.TestCase):
         self.assertEqual(status["job"]["status"], "completed")
         self.assertEqual(status["file"]["name"], "pdb_new_items.parquet")
         self.assertEqual(status["job"]["row_count"], 2)
+        self.assertEqual(status["copies"], {"backend": True})
         store = McCodeSnapshotStore("dev")
         self.assertEqual([c["value"] for c in store.companies()], ["ACME", "OTHER"])
         result = store.search("ACME", "full", 0, 25, "", {"customer_raw": "Beta"})
@@ -76,6 +77,7 @@ class NewItemsTests(unittest.TestCase):
             run_new_items_sync(request_id)
         self.assertEqual(new_items_status()["job"]["status"], "failed")
         self.assertFalse(new_items_status()["file"]["available"])
+        self.assertEqual(new_items_status()["copies"], {"backend": False})
         self.assertEqual(McCodeSnapshotStore("dev").metadata()["snapshot_id"], "old")
 
     def test_bad_json_and_duplicates_are_rejected_before_publication(self):

@@ -12,20 +12,16 @@ from typing import Any, Iterator
 import pyarrow.parquet as pq
 from azure.core import MatchConditions
 from azure.core.exceptions import HttpResponseError
-from azure.identity import DefaultAzureCredential
-from azure.keyvault.secrets import SecretClient
-from azure.storage.blob import BlobClient
 
 from services.mc_code_local_store import (
     MAX_EXTRA_COLUMNS, McCodeSnapshotStore, SnapshotValidationError,
     mc_code_data_dir, publish_snapshot, snapshot_path,
 )
 from services.pdb_ref_sync import PdbRefSyncStore, utc_now
+from services.pdb_storage import ACCOUNT_NAME, CONTAINER_NAME, blob_client
 
 
 FILE_NAME = "pdb_new_items.parquet"
-ACCOUNT_NAME = "stkeystoneresearchdev"
-CONTAINER_NAME = "pdb"
 MAX_FILE_BYTES = 5 * 1024 * 1024 * 1024
 CORE_FIELDS = {"company", "item_code", "company_item_code", "description"}
 JSON_FIELD = "item_extra_descriptions"
@@ -42,6 +38,7 @@ def new_items_job_store() -> PdbRefSyncStore:
 def new_items_status() -> dict[str, Any]:
     path = new_items_path()
     stat = path.stat() if path.is_file() else None
+    job = new_items_job_store().get()
     return {
         "configured": True,
         "source": f"{ACCOUNT_NAME}/{CONTAINER_NAME}/{FILE_NAME}",
@@ -51,28 +48,16 @@ def new_items_status() -> dict[str, Any]:
             "size_bytes": stat.st_size if stat else None,
             "modified_at": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat() if stat else None,
         },
-        "job": new_items_job_store().get(),
+        "job": job,
+        "copies": {"backend": None if not job or job.get("backend_copy_ok") is None else bool(job["backend_copy_ok"])},
     }
 
 
-def _blob_client() -> BlobClient:
-    connection_string = os.getenv("PDB_NEW_ITEMS_STORAGE_CONNECTION_STRING", "").strip()
-    if connection_string:
-        return BlobClient.from_connection_string(connection_string, CONTAINER_NAME, FILE_NAME)
-    credential = DefaultAzureCredential(exclude_interactive_browser_credential=True)
-    secret_name = os.getenv("PDB_NEW_ITEMS_STORAGE_SECRET", "").strip()
-    if secret_name:
-        with SecretClient(
-            vault_url=f"https://{os.getenv('KEY_VAULT_NAME', 'luciana-project')}.vault.azure.net/",
-            credential=credential,
-        ) as secrets:
-            connection_string = secrets.get_secret(secret_name).value
-        if not connection_string:
-            raise SnapshotValidationError("Secret di accesso al file New Items vuoto")
-        return BlobClient.from_connection_string(connection_string, CONTAINER_NAME, FILE_NAME)
-    return BlobClient(
-        account_url=f"https://{ACCOUNT_NAME}.blob.core.windows.net",
-        container_name=CONTAINER_NAME, blob_name=FILE_NAME, credential=credential,
+def _blob_client():
+    return blob_client(
+        FILE_NAME,
+        "PDB_NEW_ITEMS_STORAGE_CONNECTION_STRING",
+        "PDB_NEW_ITEMS_STORAGE_SECRET",
     )
 
 
@@ -191,17 +176,24 @@ def run_new_items_sync(request_id: str) -> None:
         with pq.ParquetFile(temporary) as parquet:
             column_count = len(parquet.schema_arrow.names)
         os.replace(temporary, new_items_path())
+        store.update(request_id, backend_copy_ok=True)
         os.replace(staged_snapshot, snapshot_path("dev"))
         store.update(
             request_id, status="completed", stage="completed", completed_at=utc_now(),
             local_size_bytes=expected_size, row_count=result["rows"], column_count=column_count,
+            backend_copy_ok=True,
         )
     except Exception as exc:
         if isinstance(exc, HttpResponseError):
             message = f"Accesso Azure Storage non riuscito ({exc.status_code}). Verificare Storage Blob Data Reader o la connection string dedicata."
         else:
             message = str(exc)[:1000]
-        store.update(request_id, status="failed", stage="failed", error_message=message, completed_at=utc_now())
+        job = store.get() or {}
+        store.update(
+            request_id, status="failed", stage="failed", error_message=message,
+            completed_at=utc_now(),
+            backend_copy_ok=False if job.get("backend_copy_ok") is None else job.get("backend_copy_ok"),
+        )
     finally:
         if temporary:
             temporary.unlink(missing_ok=True)

@@ -3,7 +3,8 @@ param(
   [int]$FrontendPort = 3000,
   [string]$ResourceGroup = "luciana_resource_group",
   [string]$WebAppName = "luciana-backend",
-  [string]$NewItemsSubscription = "sub-keystone-research-dev"
+  [string]$NewItemsSubscription = "sub-keystone-research-dev",
+  [string]$Vm04Host = "20.160.158.80"
 )
 
 $ErrorActionPreference = "Stop"
@@ -52,6 +53,9 @@ $localDataDir = Join-Path $backendDir "data\codex"
 [Environment]::SetEnvironmentVariable("MC_CODE_RUNTIME_DB", (Join-Path $localDataDir "runtime.sqlite3"), "Process")
 [Environment]::SetEnvironmentVariable("PDB_REF_LOCAL_PATH", (Join-Path $localDataDir "ref_pdb_dump.parquet"), "Process")
 [Environment]::SetEnvironmentVariable("PDB_REF_STATUS_DB", (Join-Path $localDataDir "pdb-settings.sqlite3"), "Process")
+[Environment]::SetEnvironmentVariable("PDB_MC_CLASSIFICATION_LOCAL_PATH", (Join-Path $localDataDir "pdb_mc_classification.parquet"), "Process")
+[Environment]::SetEnvironmentVariable("PDB_MC_CLASSIFICATION_STATUS_DB", (Join-Path $localDataDir "pdb-mc-classification-sync.sqlite3"), "Process")
+[Environment]::SetEnvironmentVariable("PDB_REF_VM_HOST", $Vm04Host, "Process")
 
 if (-not $env:PDB_NEW_ITEMS_STORAGE_CONNECTION_STRING -and -not $env:PDB_NEW_ITEMS_STORAGE_SECRET) {
   $newItemsKey = az storage account keys list `

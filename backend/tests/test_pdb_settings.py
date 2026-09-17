@@ -1,6 +1,8 @@
 import os
+import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -75,6 +77,9 @@ class PdbSettingsTests(unittest.TestCase):
         self.assertEqual(job["column_count"], 17)
         self.assertEqual(job["document_count"], 2182145)
         self.assertEqual(job["retriever_version"], "pdb-bm25-vm04-v1")
+        self.assertTrue(job["vm_copy_ok"])
+        self.assertTrue(job["backend_copy_ok"])
+        self.assertEqual(pdb_ref_status()["copies"], {"backend": True, "vm04": True})
         connection.close.assert_called_once()
 
     def test_local_file_status_uses_ref_pdb_dump_name(self):
@@ -86,6 +91,27 @@ class PdbSettingsTests(unittest.TestCase):
         self.assertTrue(status["file"]["available"])
         self.assertEqual(status["file"]["name"], "ref_pdb_dump.parquet")
         self.assertEqual(status["file"]["size_bytes"], target.stat().st_size)
+
+    def test_existing_status_database_is_migrated_with_copy_results(self):
+        old = self.data_dir / "old.sqlite3"
+        with closing(sqlite3.connect(old)) as connection:
+            connection.execute("""CREATE TABLE pdb_ref_sync (
+                singleton INTEGER PRIMARY KEY, request_id TEXT, status TEXT, stage TEXT,
+                requested_by TEXT, requested_at TEXT, started_at TEXT, completed_at TEXT,
+                updated_at TEXT, error_message TEXT, remote_size_bytes INTEGER,
+                local_size_bytes INTEGER, row_count INTEGER, column_count INTEGER,
+                document_count INTEGER, retriever_version TEXT)""")
+            connection.execute("""INSERT INTO pdb_ref_sync VALUES
+                (1, 'old', 'completed', 'completed', 'test', 'now', NULL, 'now',
+                 'now', NULL, 1, 1, 1, 1, 1, 'v1')""")
+            connection.commit()
+        store = PdbRefSyncStore(old)
+        with closing(sqlite3.connect(old)) as connection:
+            columns = {row[1] for row in connection.execute("PRAGMA table_info(pdb_ref_sync)")}
+        self.assertIn("backend_copy_ok", columns)
+        self.assertIn("vm_copy_ok", columns)
+        self.assertTrue(store.get()["backend_copy_ok"])
+        self.assertTrue(store.get()["vm_copy_ok"])
 
 
 if __name__ == "__main__":

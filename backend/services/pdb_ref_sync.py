@@ -82,9 +82,10 @@ class PdbRefSyncStore:
                     singleton, request_id, status, stage, requested_by,
                     requested_at, started_at, completed_at, updated_at,
                     error_message, remote_size_bytes, local_size_bytes,
-                    row_count, column_count, document_count, retriever_version
+                    row_count, column_count, document_count, retriever_version,
+                    backend_copy_ok, vm_copy_ok
                 ) VALUES (1, ?, 'queued', 'queued', ?, ?, NULL, NULL, ?,
-                    NULL, NULL, NULL, NULL, NULL, NULL, NULL)
+                    NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)
                 ON CONFLICT(singleton) DO UPDATE SET
                     request_id=excluded.request_id,
                     status='queued',
@@ -100,7 +101,9 @@ class PdbRefSyncStore:
                     row_count=NULL,
                     column_count=NULL,
                     document_count=NULL,
-                    retriever_version=NULL
+                    retriever_version=NULL,
+                    backend_copy_ok=NULL,
+                    vm_copy_ok=NULL
                 """,
                 (request_id, requested_by, now, now),
             )
@@ -120,6 +123,8 @@ class PdbRefSyncStore:
             "column_count",
             "document_count",
             "retriever_version",
+            "backend_copy_ok",
+            "vm_copy_ok",
         }
         payload = {key: value for key, value in values.items() if key in allowed}
         if not payload:
@@ -163,9 +168,21 @@ class PdbRefSyncStore:
                     row_count INTEGER,
                     column_count INTEGER,
                     document_count INTEGER,
-                    retriever_version TEXT
+                    retriever_version TEXT,
+                    backend_copy_ok INTEGER,
+                    vm_copy_ok INTEGER
                 )
                 """
+            )
+            columns = {row[1] for row in connection.execute("PRAGMA table_info(pdb_ref_sync)")}
+            for name in ("backend_copy_ok", "vm_copy_ok"):
+                if name not in columns:
+                    connection.execute(f"ALTER TABLE pdb_ref_sync ADD COLUMN {name} INTEGER")
+            connection.execute(
+                "UPDATE pdb_ref_sync SET backend_copy_ok=1 WHERE status='completed' AND backend_copy_ok IS NULL"
+            )
+            connection.execute(
+                "UPDATE pdb_ref_sync SET vm_copy_ok=1 WHERE status='completed' AND vm_copy_ok IS NULL"
             )
             connection.commit()
 
@@ -197,6 +214,7 @@ def run_pdb_ref_sync(request_id: str) -> None:
             int(os.getenv("PDB_REF_FETCH_TIMEOUT_SECONDS", "3600")),
         )
         fetch_metadata = _parse_key_values(fetch_output)
+        store.update(request_id, vm_copy_ok=True)
 
         remote_path = os.getenv("PDB_REF_REMOTE_PATH", REMOTE_PARQUET).strip()
         store.update(request_id, stage="downloading")
@@ -204,6 +222,7 @@ def run_pdb_ref_sync(request_id: str) -> None:
         store.update(
             request_id,
             stage="indexing",
+            backend_copy_ok=True,
             remote_size_bytes=remote_size,
             local_size_bytes=local_size,
             row_count=_integer_or_none(fetch_metadata.get("ROWS")),
@@ -228,12 +247,15 @@ def run_pdb_ref_sync(request_id: str) -> None:
             error_message=None,
         )
     except Exception as exc:
+        job = store.get() or {}
         store.update(
             request_id,
             status="failed",
             stage="failed",
             completed_at=utc_now(),
             error_message=str(exc)[:2000],
+            backend_copy_ok=False if job.get("backend_copy_ok") is None else job.get("backend_copy_ok"),
+            vm_copy_ok=False if job.get("vm_copy_ok") is None else job.get("vm_copy_ok"),
         )
     finally:
         if client is not None:
@@ -258,11 +280,16 @@ def pdb_ref_status() -> dict[str, Any]:
                 ).isoformat(),
             }
         )
+    job = PdbRefSyncStore().get()
     return {
         "configured": pdb_ref_sync_configured(),
         "source": "lucianavm04",
         "file": file_status,
-        "job": PdbRefSyncStore().get(),
+        "job": job,
+        "copies": {
+            "backend": _boolean_or_none(job.get("backend_copy_ok")) if job else None,
+            "vm04": _boolean_or_none(job.get("vm_copy_ok")) if job else None,
+        },
     }
 
 
@@ -301,6 +328,11 @@ def _connect_vm04() -> paramiko.SSHClient:
     except Exception:
         client.close()
         raise
+
+
+def connect_vm04() -> paramiko.SSHClient:
+    """Open the configured VM04 SSH connection for PDB data synchronization."""
+    return _connect_vm04()
 
 
 def _load_ssh_key() -> paramiko.PKey:
@@ -412,6 +444,10 @@ def _integer_or_none(value: Any) -> int | None:
         return int(value) if value is not None else None
     except (TypeError, ValueError):
         return None
+
+
+def _boolean_or_none(value: Any) -> bool | None:
+    return None if value is None else bool(value)
 
 
 def _is_stale(updated_at: str) -> bool:

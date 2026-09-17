@@ -41,6 +41,18 @@ secret Key Vault in `PDB_NEW_ITEMS_STORAGE_SECRET` (vault `KEY_VAULT_NAME`). Non
 credenziali nel frontend o nel repository. Stato e errori sono persistiti in
 `pdb-new-items-sync.sqlite3`. Gli endpoint sono `GET /api/pdb/settings/new-items` e
 `POST /api/pdb/settings/new-items/refresh`.
+
+La stessa pagina espone **Recupera MC Classification**. Il job scarica
+`stkeystoneresearchdev/pdb/pdb_mc_classification.parquet`, valida dimensione e metadati
+Parquet, quindi pubblica atomicamente la versione corrente sia in `/home/data/codex`
+nel backend sia in
+`/home/lucianauser/panel_data_utilities/scripts/jobs/pdb/pdb_mc_classification.parquet`
+su lucianavm04. Un errore prima della pubblicazione conserva il file backend precedente;
+la copia VM usa un file temporaneo e `mv` atomico. Configurazione e stato sono separati
+da New Items e Reference PDB; la connessione storage dedicata e opzionale e, se assente,
+riusa `PDB_NEW_ITEMS_STORAGE_CONNECTION_STRING`/secret oppure la Managed Identity.
+Gli endpoint sono `GET /api/pdb/settings/mc-classification` e
+`POST /api/pdb/settings/mc-classification/refresh`.
 La prima importazione richiede uno snapshot MC CODE con la reference canonica gia pubblicata.
 Lo script `scripts/start-local-dev.ps1` usa sempre la directory dati locale, anche quando
 importa le app settings Azure. In assenza di un secret o una connection string dedicata,
