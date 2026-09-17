@@ -71,6 +71,7 @@ class Bs25AiWorkerClient:
                         }
                         and not key.startswith("bs25_")
                         and not key.startswith("aibs25_")
+                        and not key.startswith("pac_ai_")
                     },
                 },
                 "proposals": proposals,

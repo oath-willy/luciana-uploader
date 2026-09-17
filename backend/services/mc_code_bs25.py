@@ -201,6 +201,7 @@ def _worker_item(item: dict[str, Any], *, include_brand: bool = False) -> dict[s
             }
             and not key.startswith("bs25_")
             and not key.startswith("aibs25_")
+            and not key.startswith("pac_ai_")
         },
     }
     if include_brand:

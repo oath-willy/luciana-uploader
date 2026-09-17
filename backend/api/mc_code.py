@@ -37,6 +37,9 @@ from services.mc_code_local_store import (
 )
 from services.mc_code_selection import resolve_mc_code_selection
 from services.mc_code_settings import mc_code_setting
+from services.mc_code_pac_ai import (
+    MAX_PAC_AI_BATCH, PacAiStore, pac_ai_configuration, sync_pac_ai,
+)
 
 
 router = APIRouter()
@@ -174,7 +177,40 @@ def get_mc_code_config():
         "pdb_available": {"dev": bs25_available, "prod": bs25_available},
         "bs25_source": "lucianavm04",
         "bs25ai_mock_mode": bs25ai_mock_mode(),
+        "pac_ai": pac_ai_configuration(),
     }
+
+
+@router.post("/mc-code/pac-ai", status_code=202)
+def submit_pac_ai(payload: McCodeItemsRequest, background_tasks: BackgroundTasks, request: Request):
+    codes = _normalized_item_codes(payload.item_codes)
+    if len(codes) > MAX_PAC_AI_BATCH:
+        raise HTTPException(status_code=400, detail=f"Seleziona al massimo {MAX_PAC_AI_BATCH} articoli per PAC-AI")
+    config = pac_ai_configuration()
+    if not config["available"]:
+        raise HTTPException(status_code=503, detail=config["message"])
+    snapshot = _snapshot(payload.environment)
+    items = snapshot.get_items(payload.company, codes)
+    found = {item["item_code"] for item in items}
+    missing = next((code for code in codes if code not in found), None)
+    if missing:
+        raise HTTPException(status_code=404, detail=f"Item MC CODE non trovato: {missing}")
+    invalid = next((i for i in items if not str(i.get("description") or "").strip()), None)
+    if invalid:
+        raise HTTPException(status_code=400, detail=f"Descrizione assente: {invalid['item_code']}")
+    store = PacAiStore()
+    accepted, locked = [], []
+    for item in items:
+        request_id = store.create(payload.environment, item, config["taxonomy_version"], _request_actor(request))
+        (accepted if request_id else locked).append(item["item_code"])
+    if accepted:
+        background_tasks.add_task(sync_pac_ai, payload.environment, payload.company)
+    return {"accepted_item_codes": accepted, "locked_item_codes": locked}
+
+
+@router.get("/mc-code/pac-ai/status")
+def pac_ai_status(environment: McCodeEnvironmentName = "dev", company: str = Query(min_length=1, max_length=255)):
+    return sync_pac_ai(environment, company)
 
 
 @router.get("/mc-code/companies", response_model=list[McCodeCompany])

@@ -8,6 +8,7 @@ import {
   Chip,
   CircularProgress,
   FormControl,
+  FormControlLabel,
   IconButton,
   InputLabel,
   LinearProgress,
@@ -17,6 +18,7 @@ import {
   Radio,
   Select,
   Stack,
+  Switch,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
@@ -39,6 +41,7 @@ import ServerDataGrid, {
   ServerGridResult,
 } from "./common/ServerDataGrid";
 import { COMPACT_LAYOUT_SCALE as MC_CODE_LAYOUT_SCALE, compactTypographyStyles as mcCodeTypographyStyles } from "./common/compactWorkspace";
+import { pacAiColumns } from "./pacAi/PacAiColumns";
 
 type McCodeView = "light" | "full";
 type McCodeEnvironmentName = "dev" | "prod";
@@ -75,6 +78,7 @@ type McCodeConfig = {
   bs23_v2_actions_available?: boolean;
   bs25_v2_actions_available?: boolean;
   bs25ai_actions_available?: boolean;
+  pac_ai?: { available: boolean; message?: string | null; max_batch_size: number };
   data_source?: string;
   pdb_available?: Record<McCodeEnvironmentName, boolean>;
   bs25ai_mock_mode?: boolean;
@@ -301,6 +305,10 @@ function rowNeedsBs25(row?: Record<string, any>) {
   );
 }
 
+function rowNeedsPacAi(row?: Record<string, any>) {
+  return Boolean(row?.description?.trim()) && !["queued", "analyzing", "completed"].includes(row?.pac_ai_status);
+}
+
 const lightColumns: GridColDef[] = [
   {
     field: "company_item_code",
@@ -320,18 +328,6 @@ const lightColumns: GridColDef[] = [
     field: "bs25_status",
     headerName: "BS25",
     width: 260,
-    sortable: false,
-  },
-  {
-    field: "fuzzy_lookup_status",
-    headerName: "Fuzzy Lookup",
-    width: 180,
-    sortable: false,
-  },
-  {
-    field: "ai_lookup_status",
-    headerName: "AI Lookup",
-    width: 180,
     sortable: false,
   },
 ];
@@ -392,6 +388,11 @@ export default function McCode() {
   const [refreshToken, setRefreshToken] = useState(0);
   const [selectionResetToken, setSelectionResetToken] = useState(0);
   const [bs25AiBusy, setBs25AiBusy] = useState(false);
+  const [pacAiBusy, setPacAiBusy] = useState(false);
+  const [pacAiActive, setPacAiActive] = useState(false);
+  const [pacAiPollToken, setPacAiPollToken] = useState(0);
+  const [showBs25Columns, setShowBs25Columns] = useState(true);
+  const [showPacAiColumns, setShowPacAiColumns] = useState(true);
   const [bs25Busy, setBs25Busy] = useState(false);
   const [bs23V2Busy, setBs23V2Busy] = useState(false);
   const [selectAllBusy, setSelectAllBusy] = useState(false);
@@ -765,6 +766,54 @@ export default function McCode() {
     [environment, selectedCompany]
   );
 
+  const handlePacAi = useCallback(async (rows: Record<string, any>[]) => {
+    if (!selectedCompany || rows.length === 0) return;
+    setPacAiBusy(true);
+    setActionError("");
+    setActionMessage("");
+    try {
+      const response = await fetch(`${backendBaseUrl}/api/mc-code/pac-ai`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ environment, company: selectedCompany.value, item_codes: rows.map((row) => row.item_code) }),
+      });
+      if (!response.ok) throw new Error(await responseError(response, "Impossibile avviare PAC-AI"));
+      const result = await response.json();
+      setActionMessage(`${result.accepted_item_codes?.length || 0} articoli inviati a PAC-AI`);
+      setSelectedRows([]);
+      setExternalSelection(undefined);
+      setSelectionResetToken((value) => value + 1);
+      setRefreshToken((value) => value + 1);
+      setPacAiPollToken((value) => value + 1);
+    } catch (error: any) {
+      setActionError(error.message || "Errore avvio PAC-AI");
+    } finally {
+      setPacAiBusy(false);
+    }
+  }, [environment, selectedCompany]);
+
+  useEffect(() => {
+    if (!selectedCompany) { setPacAiActive(false); return; }
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      try {
+        const params = new URLSearchParams({ environment, company: selectedCompany.value });
+        const response = await fetch(`${backendBaseUrl}/api/mc-code/pac-ai/status?${params}`, { signal: controller.signal });
+        if (!response.ok) throw new Error("Stato PAC-AI non disponibile");
+        const status = await response.json();
+        if (controller.signal.aborted) return;
+        setPacAiActive(Boolean(status.active));
+        if (status.updated) setRefreshToken((value) => value + 1);
+        // Periodically discover jobs submitted by other operators as well.
+        timer = setTimeout(poll, status.active ? 3000 : 15000);
+      } catch {
+        if (!controller.signal.aborted) timer = setTimeout(poll, 5000);
+      }
+    };
+    void poll();
+    return () => { controller.abort(); clearTimeout(timer); };
+  }, [environment, selectedCompany, pacAiPollToken]);
+
   const columns = useMemo(() => {
     const proposalColumns: GridColDef[] = [1, 2, 3].map((rank) => ({
       field: `bs25_proposal_${rank}`,
@@ -862,14 +911,14 @@ export default function McCode() {
         />
       ),
     };
-    const futureLookupColumns = lightColumns.slice(3);
+    const pacColumns = pacAiColumns((row) => void handlePacAi([row]));
     if (view === "light") {
       return [
         ...leadingColumns,
         bs25StatusColumn,
         ...proposalColumns,
         aiBs25Column,
-        ...futureLookupColumns,
+        ...pacColumns,
       ];
     }
 
@@ -880,7 +929,7 @@ export default function McCode() {
       bs25StatusColumn,
       ...proposalColumns,
       aiBs25Column,
-      ...futureLookupColumns,
+      ...pacColumns,
     ];
   }, [
     environment,
@@ -890,10 +939,16 @@ export default function McCode() {
     handleDraftSave,
     handleProposalSelect,
     handleBs25AiRowAction,
+    handlePacAi,
     pendingSelections,
     selectedCompany,
     view,
   ]);
+
+  const columnVisibilityModel = useMemo(() => Object.fromEntries(columns.map(({ field }) => [
+    field, field.startsWith("bs25_") || field.startsWith("aibs25_")
+      ? showBs25Columns : field.startsWith("pac_ai_") ? showPacAiColumns : true,
+  ])), [columns, showBs25Columns, showPacAiColumns]);
 
   const filterFields = useMemo(
     () =>
@@ -905,6 +960,7 @@ export default function McCode() {
             field !== "ai_lookup_status" &&
             field !== "aibs25_status" &&
             field !== "bs25_status" &&
+            !field.startsWith("pac_ai_") &&
             !field.startsWith("bs25_proposal_")
         ),
     [columns]
@@ -964,7 +1020,7 @@ export default function McCode() {
         rows.filter(
           (row) =>
             ids.has(row.id) &&
-            (rowHasUnsavedBs25(row) || rowNeedsBs25(row))
+            (rowHasUnsavedBs25(row) || rowNeedsBs25(row) || rowNeedsPacAi(row))
         )
       );
     },
@@ -1116,6 +1172,7 @@ export default function McCode() {
     () => selectedRows.filter(rowHasUnsavedBs25),
     [selectedRows]
   );
+  const pacAiSelectedRows = useMemo(() => selectedRows.filter(rowNeedsPacAi), [selectedRows]);
 
   const handleBs25 = useCallback(async () => {
     if (!selectedCompany || bs25SelectedRows.length === 0) {
@@ -1344,9 +1401,10 @@ export default function McCode() {
     : bs25SelectedRows.length === 0
       ? "Seleziona almeno un record senza proposte BS25"
       : "";
-  const fuzzyLookupAvailable = config.fuzzy_lookup_actions_available ?? false;
-  const aiLookupAvailable =
-    config.ai_lookup_actions_available ?? config.lookup_actions_available;
+  const pacAiLimit = config.pac_ai?.max_batch_size || 100;
+  const pacAiTooltip = !config.pac_ai?.available ? config.pac_ai?.message || "PAC-AI non configurato"
+    : pacAiSelectedRows.length > pacAiLimit ? `Seleziona al massimo ${pacAiLimit} articoli`
+    : pacAiSelectedRows.length === 0 ? "Seleziona articoli senza PAC-AI completato, anche già analizzati con BS25" : "";
 
   const toolbarLeft = (
     <>
@@ -1416,19 +1474,6 @@ export default function McCode() {
         <ToggleButton value="full">Full</ToggleButton>
       </ToggleButtonGroup>
 
-      <Tooltip
-        title={fuzzyLookupAvailable ? "" : "Fuzzy Lookup non ancora configurato"}
-      >
-        <span>
-          <Button
-            variant="outlined"
-            startIcon={<ScanSearch size={17} />}
-            disabled={!fuzzyLookupAvailable}
-          >
-            Fuzzy Lookup
-          </Button>
-        </span>
-      </Tooltip>
       <Box
         role="group"
         aria-label="Azioni BS25"
@@ -1526,20 +1571,28 @@ export default function McCode() {
             </Button>
           </span>
         </Tooltip>
+        <FormControlLabel sx={{ ml: 0.5, mr: 0.5 }} label="Colonne" control={
+          <Switch size="small" checked={showBs25Columns}
+            onChange={(_, checked) => setShowBs25Columns(checked)}
+            slotProps={{ input: { role: "switch", "aria-label": "Mostra colonne BS25 e BS25AI" } }} />
+        } />
       </Box>
-      <Tooltip
-        title={aiLookupAvailable ? "" : "AI Lookup non ancora configurato"}
-      >
-        <span>
-          <Button
-            variant="outlined"
-            startIcon={<Sparkles size={17} />}
-            disabled={!aiLookupAvailable}
-          >
-            AI Lookup
-          </Button>
-        </span>
-      </Tooltip>
+      <Box role="group" aria-label="Azioni PAC-AI" sx={{ display: "inline-flex", alignItems: "center", gap: 0.5,
+        p: 0.5, border: "1px solid", borderColor: "divider", borderRadius: 1.5, bgcolor: "action.hover" }}>
+        <Tooltip title={pacAiTooltip}>
+          <span><Button variant="contained" startIcon={pacAiBusy ? <CircularProgress size={16} color="inherit" /> : <Sparkles size={17} />}
+            disabled={pacAiBusy || !config.pac_ai?.available || !pacAiSelectedRows.length || pacAiSelectedRows.length > pacAiLimit}
+            onClick={() => void handlePacAi(pacAiSelectedRows)}>
+            {pacAiBusy ? "Invio..." : `PAC-AI${pacAiSelectedRows.length ? ` (${pacAiSelectedRows.length})` : ""}`}
+          </Button></span>
+        </Tooltip>
+        {pacAiActive && <Tooltip title="PAC-AI in elaborazione su lucianavm04"><CircularProgress size={18} sx={{ mx: 1 }} aria-label="PAC-AI in elaborazione" /></Tooltip>}
+        <FormControlLabel sx={{ ml: 0.5, mr: 0.5 }} label="Colonne" control={
+          <Switch size="small" checked={showPacAiColumns}
+            onChange={(_, checked) => setShowPacAiColumns(checked)}
+            slotProps={{ input: { role: "switch", "aria-label": "Mostra colonne PAC-AI" } }} />
+        } />
+      </Box>
     </>
   );
 
@@ -1650,6 +1703,7 @@ export default function McCode() {
           key={`${environment}-${selectedCompany?.value || "none"}-${view}`}
           title="MC CODE"
           columns={columns}
+          columnVisibilityModel={columnVisibilityModel}
           fetchRows={fetchRows}
           getRowId={mc_codeRowId}
           pageSizeOptions={[25, 50, 100, 250, 500]}
@@ -1728,7 +1782,7 @@ export default function McCode() {
           getRowHeight={(params) =>
             compactRows && !expandedCompactRows.has(params.id)
               ? 44
-              : params.model.bs25_status === "completed"
+              : (showBs25Columns && params.model.bs25_status === "completed") || (showPacAiColumns && Boolean(params.model.pac_ai_status))
                 ? "auto"
                 : 52
           }
@@ -1764,7 +1818,7 @@ export default function McCode() {
               .join(" ");
           }}
           isRowSelectable={(params) =>
-            rowHasUnsavedBs25(params.row) || rowNeedsBs25(params.row)
+            rowHasUnsavedBs25(params.row) || rowNeedsBs25(params.row) || rowNeedsPacAi(params.row)
           }
           refreshToken={refreshToken}
           silentRefresh

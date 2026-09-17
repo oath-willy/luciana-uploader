@@ -546,6 +546,8 @@ class RuntimeStore:
     def enrich_rows(self, environment: str, company: str, rows: list[dict[str, Any]]) -> None:
         if not rows:
             return
+        from services.mc_code_pac_ai import PacAiStore
+        PacAiStore(self.path).enrich(environment, company, rows)
         item_codes = [row["item_code"] for row in rows]
         placeholders = ",".join("?" for _ in item_codes)
         with self._connect() as connection:
