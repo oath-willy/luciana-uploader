@@ -87,5 +87,9 @@ richiedono TS 5.
 Prova reale con Codex di `lucianauser`: IVOCLAR `000640459`, “SR Nexco Paste Effect
 T 2.5g clear”, completato con `37_03_01`, confermato dal revisore e due precedenti
 PDB di altre company. Questo verifica il percorso, non l'accuratezza generale.
-Worker installato e servizio riavviato sulla VM. Webapp modificata nel workspace
-locale; il deploy Azure della webapp è separato.
+Worker installato e servizio riavviato sulla VM. Backend e frontend pubblicati
+su Azure il 17 settembre 2026 dal commit `4d5fc6f`; entrambe le pipeline GitHub
+sono concluse con successo (run `35243589314` e `35243589393`). Verificato il
+bundle online `main.c4be5fb9.js`, inclusi PAC-AI e i due toggle. La stessa prova
+è stata completata anche dal backend Azure, sull'ambiente dati `dev`, con
+risultato `37_03_01` confermato e due evidenze PDB.
