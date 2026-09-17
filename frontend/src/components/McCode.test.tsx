@@ -40,7 +40,7 @@ test("PAC-AI has its own group and can classify a previously saved BS25 item", a
     expect(screen.getByText("Master Code PAC-AI")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("switch", { name: "Mostra colonne BS25 e BS25AI" }));
     expect(screen.queryByText("Proposta BS25 1")).not.toBeInTheDocument();
-    expect(screen.queryByText("AIBS25")).not.toBeInTheDocument();
+    expect(screen.queryByText("BS25AI", { selector: "span" })).not.toBeInTheDocument();
     expect(screen.getByText("Master Code PAC-AI")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("switch", { name: "Mostra colonne PAC-AI" }));
     expect(screen.queryByText("Master Code PAC-AI")).not.toBeInTheDocument();

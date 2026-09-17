@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { classifierGridSx } from "./mcCodeClassifierStyles";
 import {
   DataGrid,
   GRID_CHECKBOX_SELECTION_COL_DEF,
@@ -534,6 +535,7 @@ export default function ServerDataGrid({
       >
         <DataGrid
           sx={{
+            ...classifierGridSx,
             height: "100%",
             width: "100%",
             minHeight: 0,

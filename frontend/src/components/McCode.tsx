@@ -8,7 +8,6 @@ import {
   Chip,
   CircularProgress,
   FormControl,
-  FormControlLabel,
   IconButton,
   InputLabel,
   LinearProgress,
@@ -42,6 +41,8 @@ import ServerDataGrid, {
 } from "./common/ServerDataGrid";
 import { COMPACT_LAYOUT_SCALE as MC_CODE_LAYOUT_SCALE, compactTypographyStyles as mcCodeTypographyStyles } from "./common/compactWorkspace";
 import { pacAiColumns } from "./pacAi/PacAiColumns";
+import { classifierGroupSx } from "./common/mcCodeClassifierStyles";
+import ClassifierProgress from "./common/ClassifierProgress";
 
 type McCodeView = "light" | "full";
 type McCodeEnvironmentName = "dev" | "prod";
@@ -897,7 +898,7 @@ export default function McCode() {
     };
     const aiBs25Column: GridColDef = {
       field: "aibs25_status",
-      headerName: "AIBS25",
+      headerName: "BS25AI",
       width: 390,
       minWidth: 340,
       sortable: false,
@@ -912,13 +913,15 @@ export default function McCode() {
       ),
     };
     const pacColumns = pacAiColumns((row) => void handlePacAi([row]));
+    const classifierColumns = [bs25StatusColumn, ...proposalColumns, aiBs25Column, ...pacColumns].map((column) => ({
+      ...column,
+      headerClassName: column.field.startsWith("pac_ai_") ? "mc-code-pac-ai-header" : "mc-code-bs25-header",
+      cellClassName: "mc-code-classifier-cell",
+    }));
     if (view === "light") {
       return [
         ...leadingColumns,
-        bs25StatusColumn,
-        ...proposalColumns,
-        aiBs25Column,
-        ...pacColumns,
+        ...classifierColumns,
       ];
     }
 
@@ -926,10 +929,7 @@ export default function McCode() {
       ...leadingColumns,
       ...extraColumns.filter((column) => !brandColumns.some((brandColumn) => brandColumn.field === column.field))
         .slice(0, MAX_EXTRA_COLUMNS).map(toGridColumn),
-      bs25StatusColumn,
-      ...proposalColumns,
-      aiBs25Column,
-      ...pacColumns,
+      ...classifierColumns,
     ];
   }, [
     environment,
@@ -1477,16 +1477,7 @@ export default function McCode() {
       <Box
         role="group"
         aria-label="Azioni BS25"
-        sx={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 0.5,
-          p: 0.5,
-          border: "1px solid",
-          borderColor: "divider",
-          borderRadius: 1.5,
-          bgcolor: "action.hover",
-        }}
+        sx={classifierGroupSx("bs25")}
       >
         <Tooltip title={bs25Tooltip} disableHoverListener={!bs25Tooltip}>
           <span>
@@ -1571,14 +1562,13 @@ export default function McCode() {
             </Button>
           </span>
         </Tooltip>
-        <FormControlLabel sx={{ ml: 0.5, mr: 0.5 }} label="Colonne" control={
+        <Tooltip title="Mostra/nascondi colonne BS25 e BS25AI">
           <Switch size="small" checked={showBs25Columns}
             onChange={(_, checked) => setShowBs25Columns(checked)}
             slotProps={{ input: { role: "switch", "aria-label": "Mostra colonne BS25 e BS25AI" } }} />
-        } />
+        </Tooltip>
       </Box>
-      <Box role="group" aria-label="Azioni PAC-AI" sx={{ display: "inline-flex", alignItems: "center", gap: 0.5,
-        p: 0.5, border: "1px solid", borderColor: "divider", borderRadius: 1.5, bgcolor: "action.hover" }}>
+      <Box role="group" aria-label="Azioni PAC-AI" sx={classifierGroupSx("pacAi")}>
         <Tooltip title={pacAiTooltip}>
           <span><Button variant="contained" startIcon={pacAiBusy ? <CircularProgress size={16} color="inherit" /> : <Sparkles size={17} />}
             disabled={pacAiBusy || !config.pac_ai?.available || !pacAiSelectedRows.length || pacAiSelectedRows.length > pacAiLimit}
@@ -1587,11 +1577,11 @@ export default function McCode() {
           </Button></span>
         </Tooltip>
         {pacAiActive && <Tooltip title="PAC-AI in elaborazione su lucianavm04"><CircularProgress size={18} sx={{ mx: 1 }} aria-label="PAC-AI in elaborazione" /></Tooltip>}
-        <FormControlLabel sx={{ ml: 0.5, mr: 0.5 }} label="Colonne" control={
+        <Tooltip title="Mostra/nascondi colonne PAC-AI">
           <Switch size="small" checked={showPacAiColumns}
             onChange={(_, checked) => setShowPacAiColumns(checked)}
             slotProps={{ input: { role: "switch", "aria-label": "Mostra colonne PAC-AI" } }} />
-        } />
+        </Tooltip>
       </Box>
     </>
   );
@@ -1866,7 +1856,7 @@ function Bs25StatusCell({
     return <Typography variant="body2" color="text.secondary">-</Typography>;
   }
   if (status === "analyzing" || status === "queued") {
-    return <Chip size="small" color="warning" label="Analyzing" />;
+    return <ClassifierProgress name="BS25" label={status === "queued" ? "In coda" : "In elaborazione"} />;
   }
   if (status === "failed") {
     return (
@@ -1968,15 +1958,7 @@ function AiBs25Cell({
   }
   if (["queued", "analyzing"].includes(status)) {
     return (
-      <Stack spacing={0.75} sx={{ width: "100%", py: 1, pr: 1 }}>
-        <Chip size="small" color="warning" label={`${stageLabel}: analyzing`} />
-        <LinearProgress color="warning" />
-        {row.aibs25_flag && (
-          <Typography variant="caption" color="warning.dark">
-            {row.aibs25_flag}
-          </Typography>
-        )}
-      </Stack>
+      <ClassifierProgress name="BS25AI" label={status === "queued" ? "In coda" : `${stageLabel}: in elaborazione`} detail={row.aibs25_flag} />
     );
   }
 
@@ -2131,7 +2113,7 @@ function ProposalCell({
     >
       <Stack spacing={0.55}>
         <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1 }}>
-          <Typography variant="subtitle2" fontWeight={800}>
+          <Typography variant="subtitle2" fontWeight={600}>
             {proposal.master_code || "Master Code non disponibile"}
           </Typography>
           <Radio

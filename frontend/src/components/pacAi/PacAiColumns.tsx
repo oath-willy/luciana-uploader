@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { GridColDef } from "@mui/x-data-grid";
 import { Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Stack, Typography } from "@mui/material";
+import ClassifierProgress from "../common/ClassifierProgress";
 
 const stages: Record<string, string> = {
   queued: "In coda", retrieving: "Ricerca nel PDB", classifying: "Classificazione IA",
@@ -8,6 +9,13 @@ const stages: Record<string, string> = {
 };
 const confidence: Record<string, string> = { high: "Alta", medium: "Media", low: "Bassa" };
 const outcomes: Record<string, string> = { confirmed: "Confermato", corrected: "Corretto", unresolved: "Da verificare" };
+
+const compactSummarySx = {
+  ".mc-code-row-compact &": {
+    display: "block", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+    width: "100%", minWidth: 0,
+  },
+};
 
 function PacAiEvidence({ row }: { row: Record<string, any> }) {
   const [open, setOpen] = useState(false);
@@ -47,8 +55,10 @@ export function pacAiColumns(onRetry: (row: Record<string, any>) => void): GridC
   return [
     {
       field: "pac_ai_status", headerName: "PAC-AI", width: 240, sortable: false, filterable: false,
-      renderCell: ({ row }) => <Stack spacing={0.5} sx={{ py: 1, whiteSpace: "normal", width: "100%" }}>
-        <Typography variant="body2">{row.pac_ai_status ? stages[row.pac_ai_stage] || stages[row.pac_ai_status] || "In elaborazione" : "—"}</Typography>
+      renderCell: ({ row }) => ["queued", "analyzing"].includes(row.pac_ai_status)
+        ? <ClassifierProgress name="PAC-AI" label={stages[row.pac_ai_stage] || stages[row.pac_ai_status] || "In elaborazione"} />
+        : <Stack spacing={0.5} sx={{ py: 1, whiteSpace: "normal", width: "100%" }}>
+        <Typography variant="body2" sx={compactSummarySx}>{row.pac_ai_status ? stages[row.pac_ai_stage] || stages[row.pac_ai_status] || "In elaborazione" : "—"}</Typography>
         {row.pac_ai_error_message && <Typography variant="caption" color="error">{row.pac_ai_error_message}</Typography>}
         {row.pac_ai_status === "failed" && <Button size="small" onClick={(event) => { event.stopPropagation(); onRetry(row); }}>Riprova PAC-AI</Button>}
         {row.pac_ai_result && <Chip size="small" sx={{ alignSelf: "flex-start" }}
@@ -58,21 +68,21 @@ export function pacAiColumns(onRetry: (row: Record<string, any>) => void): GridC
     },
     {
       field: "pac_ai_master_code", headerName: "Master Code PAC-AI", width: 205, sortable: false, filterable: false,
-      renderCell: ({ row }) => <Stack spacing={0.5} sx={{ py: 1 }}>
-        <Typography fontWeight={600}>{row.pac_ai_result?.master_code || "—"}</Typography>
+      renderCell: ({ row }) => <Stack spacing={0.5} sx={{ py: 1, width: "100%", minWidth: 0 }}>
+        <Typography fontWeight={600} sx={compactSummarySx}>{row.pac_ai_result?.master_code || "—"}</Typography>
         {row.pac_ai_result && <Typography variant="caption">Affidabilità: {confidence[row.pac_ai_result.confidence]}</Typography>}
       </Stack>,
     },
     {
       field: "pac_ai_classification", headerName: "Classificazione PAC-AI", width: 310, sortable: false, filterable: false,
-      renderCell: ({ row }) => <Typography variant="body2" sx={{ whiteSpace: "normal", py: 1 }}>
+      renderCell: ({ row }) => <Typography variant="body2" sx={{ whiteSpace: "normal", py: 1, ...compactSummarySx }}>
         {[row.pac_ai_result?.classification?.family, row.pac_ai_result?.classification?.subfamily, row.pac_ai_result?.classification?.product_group].filter(Boolean).join(" → ") || "—"}
       </Typography>,
     },
     {
       field: "pac_ai_rationale", headerName: "Motivazione PAC-AI", width: 430, sortable: false, filterable: false,
-      renderCell: ({ row }) => <Stack sx={{ whiteSpace: "normal", py: 1, alignItems: "flex-start" }}>
-        <Typography variant="body2">{row.pac_ai_result?.rationale || "—"}</Typography>
+      renderCell: ({ row }) => <Stack sx={{ whiteSpace: "normal", py: 1, alignItems: "flex-start", width: "100%", minWidth: 0 }}>
+        <Typography variant="body2" sx={compactSummarySx}>{row.pac_ai_result?.rationale || "—"}</Typography>
         <PacAiEvidence row={row} />
       </Stack>,
     },

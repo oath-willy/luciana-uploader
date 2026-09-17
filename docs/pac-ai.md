@@ -13,10 +13,14 @@ indipendente e non modifica automaticamente la codifica salvata.
 | Worker lucianavm04 | Cerca sull'intero indice PDB, prepara esempi e tassonomia, esegue classificazione e revisione con Codex come `lucianauser`, conserva coda e checkpoint. |
 | Pagina MC CODE | Avvia fino a 100 articoli per richiesta; mostra avanzamento, codice, affidabilità qualitativa, classificazione, motivazione e precedenti citati; permette di riprovare i job falliti. |
 
-I due switch **Colonne**, nei gruppi BS25 e PAC-AI, controllano separatamente la
+I due switch senza etichetta, nei gruppi BS25 e PAC-AI, controllano separatamente la
 visibilità. Quello BS25 include stato, tre proposte e BS25AI. Nascondere un gruppo
 non cancella risultati, selezioni o elaborazioni. Sono stati rimossi pulsanti
 e colonne segnaposto Fuzzy Lookup / AI Lookup.
+
+Gruppo e intestazioni BS25 sono blu; PAC-AI usa il verde acqua. Le celle condividono
+tipografia e indicatori di avanzamento. A riga compatta resta una sola linea con
+ellissi e lo spinner durante l'elaborazione; espandendo si vedono barra e dettagli.
 
 ## Elaborazione
 
