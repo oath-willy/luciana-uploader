@@ -36,6 +36,7 @@ import ControlPanel from '../components/ControlPanel';
 import CountriesDictionary from '../components/CountriesDictionary';
 import Companies from '../components/database/Companies';
 import FatherNames from '../components/database/FatherNames';
+import Brands from '../components/database/Brands';
 import Countries from '../components/database/Countries';
 import Currencies from '../components/database/Currencies';
 import CountriesCurrencies from '../components/database/CountriesCurrencies';
@@ -177,6 +178,7 @@ export default function AdminDashboardPage() {
                             <NavLink label="ITEMS CODE" pl="xl" component={Link} to="/navigator/items-code" />
                           </NavLink>
                           <NavLink label="Companies" pl="lg" component={Link} to="/navigator/companies" />
+                          <NavLink label="Brands" pl="lg" component={Link} to="/navigator/brands" />
                           <NavLink label="Father Names" pl="lg" component={Link} to="/navigator/father-names" />
                           <NavLink
                             label="Settings"
@@ -269,6 +271,7 @@ export default function AdminDashboardPage() {
           <Route path="items-code" element={<ItemsCode />} />
           <Route path="codex" element={<Navigate to="/navigator/mc-code" replace />} />
           <Route path="companies" element={<Companies />} />
+          <Route path="brands" element={<Brands />} />
           <Route path="father-names" element={<FatherNames />} />
           <Route path="pdb-settings" element={<PdbSettings />} />
           <Route path="countries" element={<Countries />} />

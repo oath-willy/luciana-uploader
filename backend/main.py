@@ -17,6 +17,7 @@ from api import control_panel
 from api import mc_code
 from api import pdb_settings
 from api import items_code
+from api import pdb_brands
 from api.db import products
 from api.db import countries_dictionary
 from api.db import database_tables
@@ -50,6 +51,7 @@ app.include_router(mc_code.router, prefix="/api")
 app.include_router(mc_code.legacy_router, prefix="/api")
 app.include_router(pdb_settings.router, prefix="/api")
 app.include_router(items_code.router, prefix="/api")
+app.include_router(pdb_brands.router, prefix="/api")
 app.include_router(router, prefix="/api")
 app.include_router(control_panel.router, prefix="/api")
 app.include_router(run_script.router, prefix="/api")
