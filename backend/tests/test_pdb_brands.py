@@ -31,7 +31,12 @@ class PdbBrandsTests(unittest.TestCase):
         )
         self.environment = patch.dict(
             os.environ,
-            {"PDB_BRANDS_DICTIONARY_LOCAL_PATH": str(self.path)},
+            {
+                "PDB_BRANDS_DICTIONARY_LOCAL_PATH": str(self.path),
+                "PDB_BRANDS_DICTIONARY_EDITS_PATH": str(
+                    self.root / "pdb_brands_dictionary_edits.parquet"
+                ),
+            },
         )
         self.environment.start()
         app = FastAPI()
@@ -49,6 +54,22 @@ class PdbBrandsTests(unittest.TestCase):
         return self.client.post(
             "/api/pdb/brands/raw/search",
             json={"brand": brand, **payload},
+        )
+
+    def update_raw(self, record_key, brand_raw, brand="ACME"):
+        return self.client.patch(
+            "/api/pdb/brands/raw/records",
+            json={
+                "record_key": record_key,
+                "brand": brand,
+                "brand_raw": brand_raw,
+            },
+        )
+
+    def create_raw(self, brand_raw, brand="ACME"):
+        return self.client.post(
+            "/api/pdb/brands/raw/records",
+            json={"brand": brand, "brand_raw": brand_raw},
         )
 
     def test_lists_unique_brand_column_values_with_aggregated_prefixes(self):
@@ -73,7 +94,10 @@ class PdbBrandsTests(unittest.TestCase):
 
         occurrences = self.raw_search().json()
         self.assertEqual(occurrences["total"], 3)
-        self.assertEqual([row["id"] for row in occurrences["rows"]], [1, 3, 2])
+        self.assertEqual(
+            [row["record_key"] for row in occurrences["rows"]],
+            ["id:1", "id:3", "id:2"],
+        )
         self.assertEqual(
             self.raw_search(filters={"brand_raw": "Inc."}).json()["total"],
             1,
@@ -100,7 +124,61 @@ class PdbBrandsTests(unittest.TestCase):
         response = self.raw_search(brand="LEGACY")
 
         self.assertEqual(response.status_code, 200, response.text)
-        self.assertEqual([row["id"] for row in response.json()["rows"]], [0, 1])
+        self.assertEqual(
+            [row["record_key"] for row in response.json()["rows"]],
+            ["row:0", "row:1"],
+        )
+
+    def test_modified_values_override_source_and_only_changes_are_persisted(self):
+        response = self.update_raw("id:2", "Acme manually corrected")
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["row"]["change_status"], "modified")
+
+        occurrences = self.raw_search().json()["rows"]
+        modified = next(row for row in occurrences if row["record_key"] == "id:2")
+        self.assertEqual(modified["brand_raw"], "Acme manually corrected")
+        self.assertEqual(modified["change_status"], "modified")
+        self.assertNotIn("Acme, Inc.", [row["brand_raw"] for row in occurrences])
+
+        edits = pq.read_table(
+            self.root / "pdb_brands_dictionary_edits.parquet"
+        ).to_pylist()
+        self.assertEqual(len(edits), 1)
+        self.assertEqual(edits[0]["source_key"], "id:2")
+        self.assertEqual(edits[0]["brand_raw"], "Acme manually corrected")
+        source = pq.read_table(self.path).to_pylist()
+        self.assertEqual(next(row for row in source if row["id"] == 2)["brand_raw"], "Acme, Inc.")
+
+    def test_new_occurrences_are_stored_in_overlay_and_can_be_modified(self):
+        created = self.create_raw("New manual occurrence")
+        self.assertEqual(created.status_code, 200, created.text)
+        record_key = created.json()["row"]["record_key"]
+        self.assertTrue(record_key.startswith("new:"))
+
+        updated = self.update_raw(record_key, "Updated manual occurrence")
+        self.assertEqual(updated.status_code, 200, updated.text)
+        occurrences = self.raw_search().json()
+        self.assertEqual(occurrences["total"], 4)
+        added = next(
+            row for row in occurrences["rows"] if row["record_key"] == record_key
+        )
+        self.assertEqual(added["brand_raw"], "Updated manual occurrence")
+        self.assertEqual(added["change_status"], "added")
+
+        edits = pq.read_table(
+            self.root / "pdb_brands_dictionary_edits.parquet"
+        ).to_pylist()
+        self.assertEqual(len(edits), 1)
+        self.assertIsNone(edits[0]["source_key"])
+        self.assertTrue(edits[0]["is_new"])
+
+    def test_rejects_cross_brand_or_unknown_record_updates(self):
+        self.assertEqual(
+            self.update_raw("id:2", "Wrong brand", brand="BETA").status_code,
+            400,
+        )
+        self.assertEqual(self.update_raw("id:999", "Missing").status_code, 400)
+        self.assertEqual(self.create_raw("Missing", brand="UNKNOWN").status_code, 400)
 
 
 if __name__ == "__main__":
