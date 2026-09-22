@@ -86,6 +86,22 @@ class PdbBrandsTests(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertIn("PDB Settings", response.json()["detail"])
 
+    def test_uses_parquet_row_number_until_the_id_column_is_available(self):
+        pq.write_table(
+            pa.Table.from_pylist(
+                [
+                    {"brand_raw": "Legacy A", "brand": "LEGACY", "prefix": "LG"},
+                    {"brand_raw": "Legacy B", "brand": "LEGACY", "prefix": "LG"},
+                ]
+            ),
+            self.path,
+        )
+
+        response = self.raw_search(brand="LEGACY")
+
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual([row["id"] for row in response.json()["rows"]], [0, 1])
+
 
 if __name__ == "__main__":
     unittest.main()

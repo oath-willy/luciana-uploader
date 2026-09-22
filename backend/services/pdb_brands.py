@@ -12,7 +12,7 @@ from services.mc_code_local_store import SnapshotUnavailable
 from services.pdb_brands_dictionary_sync import brands_dictionary_path
 
 
-REQUIRED_COLUMNS = frozenset({"id", "brand", "prefix", "brand_raw"})
+REQUIRED_COLUMNS = frozenset({"brand", "prefix", "brand_raw"})
 BRAND_FILTERS = frozenset({"brand", "prefix"})
 RAW_FILTERS = frozenset({"brand_raw"})
 
@@ -172,13 +172,18 @@ def search_brand_raw(
         raise ValueError("brand obbligatorio")
     path = brands_dictionary_path()
     stamp = _stamp(path)
-    _schema(stamp)
+    columns = _schema(stamp)
     filter_where, filter_parameters = _filters(search, filters, RAW_FILTERS)
-    source = f"read_parquet({_literal(str(path))})"
+    if "id" in columns:
+        source = f"read_parquet({_literal(str(path))})"
+        id_expression = "id"
+    else:
+        source = f"read_parquet({_literal(str(path))}, file_row_number=true)"
+        id_expression = "file_row_number"
     base = f"""
         WITH occurrences AS (
             SELECT
-                id,
+                {id_expression} AS id,
                 TRIM(CAST(brand_raw AS VARCHAR)) AS brand_raw
             FROM {source}
             WHERE TRIM(CAST(brand AS VARCHAR)) = ?
