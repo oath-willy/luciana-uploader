@@ -55,6 +55,8 @@ $localDataDir = Join-Path $backendDir "data\codex"
 [Environment]::SetEnvironmentVariable("PDB_REF_STATUS_DB", (Join-Path $localDataDir "pdb-settings.sqlite3"), "Process")
 [Environment]::SetEnvironmentVariable("PDB_MC_CLASSIFICATION_LOCAL_PATH", (Join-Path $localDataDir "pdb_mc_classification.parquet"), "Process")
 [Environment]::SetEnvironmentVariable("PDB_MC_CLASSIFICATION_STATUS_DB", (Join-Path $localDataDir "pdb-mc-classification-sync.sqlite3"), "Process")
+[Environment]::SetEnvironmentVariable("PDB_BRANDS_DICTIONARY_LOCAL_PATH", (Join-Path $localDataDir "pdb_brands_dictionary.parquet"), "Process")
+[Environment]::SetEnvironmentVariable("PDB_BRANDS_DICTIONARY_STATUS_DB", (Join-Path $localDataDir "pdb-brands-dictionary-sync.sqlite3"), "Process")
 [Environment]::SetEnvironmentVariable("PDB_REF_VM_HOST", $Vm04Host, "Process")
 
 if (-not $env:PDB_NEW_ITEMS_STORAGE_CONNECTION_STRING -and -not $env:PDB_NEW_ITEMS_STORAGE_SECRET) {

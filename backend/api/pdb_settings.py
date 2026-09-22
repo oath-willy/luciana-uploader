@@ -14,6 +14,11 @@ from services.pdb_new_items_sync import new_items_job_store, new_items_status, r
 from services.pdb_mc_classification_sync import (
     classification_job_store, classification_status, run_classification_sync,
 )
+from services.pdb_brands_dictionary_sync import (
+    brands_dictionary_job_store,
+    brands_dictionary_status,
+    run_brands_dictionary_sync,
+)
 
 
 router = APIRouter(prefix="/pdb/settings", tags=["PDB Settings"])
@@ -49,6 +54,24 @@ def refresh_mc_classification(background_tasks: BackgroundTasks, request: Reques
         raise HTTPException(status_code=409, detail="Un aggiornamento MC Classification e gia in corso")
     background_tasks.add_task(run_classification_sync, request_id)
     return classification_status()
+
+
+@router.get("/brands-dictionary")
+def get_brands_dictionary_status():
+    return brands_dictionary_status()
+
+
+@router.post("/brands-dictionary/refresh", status_code=202)
+def refresh_brands_dictionary(background_tasks: BackgroundTasks, request: Request):
+    request_id = uuid4().hex
+    requested_by = request.headers.get("x-ms-client-principal-name") or "webapp-user"
+    if not brands_dictionary_job_store().claim(request_id, requested_by):
+        raise HTTPException(
+            status_code=409,
+            detail="Un aggiornamento Brands Dictionary e gia in corso",
+        )
+    background_tasks.add_task(run_brands_dictionary_sync, request_id)
+    return brands_dictionary_status()
 
 
 @router.get("/ref-dump")

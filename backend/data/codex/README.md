@@ -53,6 +53,16 @@ da New Items e Reference PDB; la connessione storage dedicata e opzionale e, se 
 riusa `PDB_NEW_ITEMS_STORAGE_CONNECTION_STRING`/secret oppure la Managed Identity.
 Gli endpoint sono `GET /api/pdb/settings/mc-classification` e
 `POST /api/pdb/settings/mc-classification/refresh`.
+
+**Recupera Brands Dictionary** scarica
+`stkeystoneresearchdev/pdb/pdb_brands_dictionary.parquet`, ne verifica dimensione e
+metadati Parquet e sostituisce atomicamente la copia in `/home/data/codex` nel backend.
+Stato ed errori sono persistiti in `pdb-brands-dictionary-sync.sqlite3`; un errore
+conserva l'ultima copia valida. La connessione dedicata e opzionale e, se assente,
+riusa `PDB_NEW_ITEMS_STORAGE_CONNECTION_STRING`/secret oppure la Managed Identity.
+Gli endpoint sono `GET /api/pdb/settings/brands-dictionary` e
+`POST /api/pdb/settings/brands-dictionary/refresh`.
+
 La prima importazione richiede uno snapshot MC CODE con la reference canonica gia pubblicata.
 Lo script `scripts/start-local-dev.ps1` usa sempre la directory dati locale, anche quando
 importa le app settings Azure. In assenza di un secret o una connection string dedicata,

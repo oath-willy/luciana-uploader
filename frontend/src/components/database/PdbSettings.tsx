@@ -2,6 +2,7 @@ import { Box, Stack, Text, Title } from "@mantine/core";
 import ParquetSyncSettings from "./ParquetSyncSettings";
 import NewItemsSettings from "./NewItemsSettings";
 import McClassificationSettings from "./McClassificationSettings";
+import BrandsDictionarySettings from "./BrandsDictionarySettings";
 
 export default function PdbSettings() {
   return <Box p="md">
@@ -33,6 +34,7 @@ export default function PdbSettings() {
       </ParquetSyncSettings>
       <NewItemsSettings />
       <McClassificationSettings />
+      <BrandsDictionarySettings />
     </Stack>
   </Box>;
 }

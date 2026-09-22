@@ -22,5 +22,6 @@ test("uses the same recovery action for every PDB dataset", async () => {
   await screen.findByRole("heading", { name: "Reference PDB" });
   expect(screen.getByRole("heading", { name: "New Items" })).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "MC Classification" })).toBeInTheDocument();
-  expect(screen.getAllByRole("button", { name: "Recupera" })).toHaveLength(3);
+  expect(screen.getByRole("heading", { name: "Brands Dictionary" })).toBeInTheDocument();
+  expect(screen.getAllByRole("button", { name: "Recupera" })).toHaveLength(4);
 });
