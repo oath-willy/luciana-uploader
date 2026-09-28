@@ -26,8 +26,8 @@ class _FakeCompanySession:
         sql = str(statement)
         self.calls.append((sql, params or {}))
         if "INFORMATION_SCHEMA.COLUMNS" in sql:
-            return _Result(rows=[("id_company",), ("company",), ("manufacturer",),
-                                ("dealer",), ("decription",), ("note",)])
+            return _Result(rows=[("id",), ("company_name",), ("manufacturer",),
+                                ("dealer",), ("description",), ("note",)])
         if "COUNT(*)" in sql:
             return _Result(scalar_value=1)
         if "UPDATE dbo.companies" in sql:
@@ -66,6 +66,9 @@ def test_company_search_uses_dedicated_dev_session_and_returns_detail_fields():
     assert result["total"] == 1
     assert result["rows"][0]["decription"] == "Dental manufacturer"
     assert result["rows"][0]["note"] == "Priority account"
+    rows_sql = next(sql for sql, _ in db.calls if "OFFSET" in sql)
+    assert "[id] AS id_company" in rows_sql
+    assert "[company_name] AS company" in rows_sql
     assert db.closed
 
 
@@ -89,8 +92,9 @@ def test_company_update_writes_all_detail_fields_through_dev_session():
     update_sql, update_params = next(
         (sql, params) for sql, params in db.calls if "UPDATE dbo.companies" in sql
     )
-    assert "[decription] = :decription" in update_sql
+    assert "[description] = :decription" in update_sql
     assert "[note] = :note" in update_sql
+    assert "WHERE [id] = :id_company" in update_sql
     assert update_params["decription"] == "Updated description"
     assert update_params["note"] == "Updated note"
     assert db.closed

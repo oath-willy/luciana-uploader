@@ -199,7 +199,7 @@ CompaniesSessionLocal = sessionmaker(
 )
 
 
-def _company_text_columns(db) -> tuple[str, str]:
+def _company_columns(db) -> dict[str, str]:
     rows = db.execute(
         text(
             """
@@ -211,19 +211,26 @@ def _company_text_columns(db) -> tuple[str, str]:
         )
     ).fetchall()
     columns = {str(row[0]).lower(): str(row[0]) for row in rows}
-    description_column = columns.get("decription") or columns.get("description")
-    note_column = columns.get("note")
+    mapping = {
+        "id_company": columns.get("id_company") or columns.get("id"),
+        "company": columns.get("company") or columns.get("company_name"),
+        "manufacturer": columns.get("manufacturer"),
+        "dealer": columns.get("dealer"),
+        "decription": columns.get("decription") or columns.get("description"),
+        "note": columns.get("note"),
+    }
 
-    if not description_column or not note_column:
+    missing = [field for field, column in mapping.items() if not column]
+    if missing:
         raise HTTPException(
             status_code=500,
             detail=(
-                "La tabella luciana_db_dev.dbo.companies deve contenere "
-                "le colonne decription (o description) e note"
+                "La tabella luciana_db_dev.dbo.companies non contiene i campi richiesti: "
+                + ", ".join(missing)
             ),
         )
 
-    return description_column, note_column
+    return {field: str(column) for field, column in mapping.items()}
 
 
 def _quoted_identifier(value: str) -> str:
@@ -231,15 +238,15 @@ def _quoted_identifier(value: str) -> str:
 
 
 def _companies_base_query(db) -> str:
-    description_column, note_column = _company_text_columns(db)
+    columns = _company_columns(db)
     return f"""
         SELECT
-            c.id_company,
-            c.company,
-            c.manufacturer,
-            c.dealer,
-            c.{_quoted_identifier(description_column)} AS decription,
-            c.{_quoted_identifier(note_column)} AS note
+            c.{_quoted_identifier(columns['id_company'])} AS id_company,
+            c.{_quoted_identifier(columns['company'])} AS company,
+            c.{_quoted_identifier(columns['manufacturer'])} AS manufacturer,
+            c.{_quoted_identifier(columns['dealer'])} AS dealer,
+            c.{_quoted_identifier(columns['decription'])} AS decription,
+            c.{_quoted_identifier(columns['note'])} AS note
         FROM dbo.companies AS c
     """
 
@@ -779,7 +786,7 @@ def update_companies(request: CompanyUpdateRequest):
     db = CompaniesSessionLocal()
     try:
         with db.begin():
-            description_column, note_column = _company_text_columns(db)
+            columns = _company_columns(db)
             for item in request.items:
                 if item.id_company <= 0:
                     raise HTTPException(status_code=400, detail="id_company non valido")
@@ -792,12 +799,12 @@ def update_companies(request: CompanyUpdateRequest):
                         f"""
                         UPDATE dbo.companies
                         SET
-                            company = :company,
-                            manufacturer = :manufacturer,
-                            dealer = :dealer,
-                            {_quoted_identifier(description_column)} = :decription,
-                            {_quoted_identifier(note_column)} = :note
-                        WHERE id_company = :id_company
+                            {_quoted_identifier(columns['company'])} = :company,
+                            {_quoted_identifier(columns['manufacturer'])} = :manufacturer,
+                            {_quoted_identifier(columns['dealer'])} = :dealer,
+                            {_quoted_identifier(columns['decription'])} = :decription,
+                            {_quoted_identifier(columns['note'])} = :note
+                        WHERE {_quoted_identifier(columns['id_company'])} = :id_company
                         """
                     ),
                     {
