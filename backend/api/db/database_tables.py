@@ -15,6 +15,7 @@ router = APIRouter()
 PAGE_SIZE_OPTIONS = {25, 50, 100, 500}
 DEFAULT_PAGE_SIZE = 50
 DATABASE_NAME = os.getenv("SQL_DICTIONARY_DATABASE", "luciana_db")
+COMPANIES_DATABASE_NAME = os.getenv("SQL_COMPANIES_DATABASE", "luciana_db_dev")
 
 
 class TableSearchRequest(BaseModel):
@@ -29,6 +30,8 @@ class CompanyUpdateItem(BaseModel):
     company: str
     manufacturer: bool = False
     dealer: bool = False
+    decription: str | None = None
+    note: str | None = None
 
 
 class CompanyUpdateRequest(BaseModel):
@@ -65,15 +68,14 @@ TableKey = Literal["companies", "countries", "currencies", "father-names"]
 
 TABLE_CONFIGS = {
     "companies": {
-        "base": """
-            SELECT
-                c.id_company,
-                c.company,
-                c.manufacturer,
-                c.dealer
-            FROM dbo.companies AS c
-        """,
-        "fields": ["id_company", "company", "manufacturer", "dealer"],
+        "fields": [
+            "id_company",
+            "company",
+            "manufacturer",
+            "dealer",
+            "decription",
+            "note",
+        ],
         "order": "[company], [id_company]",
     },
     "countries": {
@@ -167,11 +169,11 @@ COUNTRIES_CURRENCIES_FIELDS = [
 ]
 
 
-def _engine():
+def _engine(database_name: str = DATABASE_NAME):
     params = urllib.parse.quote_plus(
         f"Driver={{ODBC Driver 17 for SQL Server}};"
         f"Server=tcp:{os.getenv('SQL_SERVER')},1433;"
-        f"Database={DATABASE_NAME};"
+        f"Database={database_name};"
         f"Uid={os.getenv('SQL_USER')};"
         f"Pwd={os.getenv('SQL_PASSWORD')};"
         "Encrypt=yes;"
@@ -189,6 +191,57 @@ DatabaseSessionLocal = sessionmaker(
     autoflush=False,
     bind=_engine(),
 )
+
+CompaniesSessionLocal = sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    bind=_engine(COMPANIES_DATABASE_NAME),
+)
+
+
+def _company_text_columns(db) -> tuple[str, str]:
+    rows = db.execute(
+        text(
+            """
+            SELECT COLUMN_NAME
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = 'dbo'
+                AND TABLE_NAME = 'companies'
+            """
+        )
+    ).fetchall()
+    columns = {str(row[0]).lower(): str(row[0]) for row in rows}
+    description_column = columns.get("decription") or columns.get("description")
+    note_column = columns.get("note")
+
+    if not description_column or not note_column:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "La tabella luciana_db_dev.dbo.companies deve contenere "
+                "le colonne decription (o description) e note"
+            ),
+        )
+
+    return description_column, note_column
+
+
+def _quoted_identifier(value: str) -> str:
+    return f"[{value.replace(']', ']]')}]"
+
+
+def _companies_base_query(db) -> str:
+    description_column, note_column = _company_text_columns(db)
+    return f"""
+        SELECT
+            c.id_company,
+            c.company,
+            c.manufacturer,
+            c.dealer,
+            c.{_quoted_identifier(description_column)} AS decription,
+            c.{_quoted_identifier(note_column)} AS note
+        FROM dbo.companies AS c
+    """
 
 
 def _filter_value(value: Any) -> str:
@@ -416,7 +469,14 @@ def _assert_no_duplicate_payload(items: list[CountriesCurrencyItem]):
         seen.add(key)
 
 
-def _search(base_query: str, fields: list[str], order_by: str, request: TableSearchRequest, base_params=None):
+def _search_in_session(
+    db,
+    base_query: str,
+    fields: list[str],
+    order_by: str,
+    request: TableSearchRequest,
+    base_params=None,
+):
     if request.page < 0:
         raise HTTPException(status_code=400, detail="page non puo essere negativa")
     if request.page_size not in PAGE_SIZE_OPTIONS:
@@ -432,18 +492,22 @@ def _search(base_query: str, fields: list[str], order_by: str, request: TableSea
         "page_size": request.page_size,
     }
 
+    total = db.execute(_count_query(base_query, filter_clause), params).scalar() or 0
+    rows = db.execute(_rows_query(base_query, filter_clause, order_by), query_params).fetchall()
+    return jsonable_encoder(
+        {
+            "rows": [dict(row._mapping) for row in rows],
+            "total": total,
+            "page": request.page,
+            "page_size": request.page_size,
+        }
+    )
+
+
+def _search(base_query: str, fields: list[str], order_by: str, request: TableSearchRequest, base_params=None):
     db = DatabaseSessionLocal()
     try:
-        total = db.execute(_count_query(base_query, filter_clause), params).scalar() or 0
-        rows = db.execute(_rows_query(base_query, filter_clause, order_by), query_params).fetchall()
-        return jsonable_encoder(
-            {
-                "rows": [dict(row._mapping) for row in rows],
-                "total": total,
-                "page": request.page,
-                "page_size": request.page_size,
-            }
-        )
+        return _search_in_session(db, base_query, fields, order_by, request, base_params)
     finally:
         db.close()
 
@@ -513,6 +577,18 @@ def search_countries_currencies(request: CountriesCurrenciesSearchRequest):
 @router.post("/database/{table_key}/search")
 def search_database_table(table_key: TableKey, request: TableSearchRequest):
     config = TABLE_CONFIGS[table_key]
+    if table_key == "companies":
+        db = CompaniesSessionLocal()
+        try:
+            return _search_in_session(
+                db,
+                _companies_base_query(db),
+                config["fields"],
+                config["order"],
+                request,
+            )
+        finally:
+            db.close()
     return _search(config["base"], config["fields"], config["order"], request)
 
 
@@ -700,9 +776,10 @@ def update_companies(request: CompanyUpdateRequest):
     if not request.items:
         raise HTTPException(status_code=400, detail="Nessuna company da aggiornare")
 
-    db = DatabaseSessionLocal()
+    db = CompaniesSessionLocal()
     try:
         with db.begin():
+            description_column, note_column = _company_text_columns(db)
             for item in request.items:
                 if item.id_company <= 0:
                     raise HTTPException(status_code=400, detail="id_company non valido")
@@ -710,14 +787,16 @@ def update_companies(request: CompanyUpdateRequest):
                 if not company:
                     raise HTTPException(status_code=400, detail="company non puo essere vuota")
 
-                db.execute(
+                result = db.execute(
                     text(
-                        """
+                        f"""
                         UPDATE dbo.companies
                         SET
                             company = :company,
                             manufacturer = :manufacturer,
-                            dealer = :dealer
+                            dealer = :dealer,
+                            {_quoted_identifier(description_column)} = :decription,
+                            {_quoted_identifier(note_column)} = :note
                         WHERE id_company = :id_company
                         """
                     ),
@@ -726,8 +805,15 @@ def update_companies(request: CompanyUpdateRequest):
                         "company": company,
                         "manufacturer": item.manufacturer,
                         "dealer": item.dealer,
+                        "decription": item.decription,
+                        "note": item.note,
                     },
                 )
+                if result.rowcount == 0:
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"Company {item.id_company} non trovata",
+                    )
 
         return jsonable_encoder({"updated": len(request.items)})
     finally:
