@@ -41,6 +41,29 @@ L'accesso remoto dipende da **lucianavm04 accesa**, che ospita DNS e proxy.
 Se viene deallocata dal Control Panel, un utente dall'ufficio o un amministratore
 dal portale Azure deve riaccenderla. lucianavm03 non serve per accedere al sito.
 
+### Proposta: accesso VPN con entrambe le VM di lavoro spente
+
+Spostare DNS e proxy in una VM Ubuntu dedicata sempre accesa nella VNet
+esistente, separata da lucianavm03/04. Configurazione proposta: Standard_B1s
+(1 vCPU, 1 GiB RAM), disco Standard HDD LRS da 32 GiB, IP pubblico Standard
+statico. SSH e HTTPS di configurazione limitati a ufficio/VPN; porta proxy
+limitata alla sola VPN. Aggiornare DNS del profilo VPN, PAC, pacchetto client e
+IP consentito nella SWA. Il gateway Azure VPN esistente viene mantenuto.
+
+Stima base per 730 ore/mese, listino West Europe in EUR verificato il 5/10/2026:
+
+| Risorsa | Costo stimato al mese |
+| --- | ---: |
+| VM Linux B1s (0,01056 €/ora) | 7,71 € |
+| IP pubblico Standard (0,0044 €/ora) | 3,21 € |
+| Disco S4 LRS | 1,35 € |
+| Totale base | **12,27 €** |
+
+IVA, traffico e operazioni disco a consumo sono aggiuntivi. La stima usa il
+[listino retail Azure](https://learn.microsoft.com/en-us/rest/api/cost-management/retail-prices/azure-retail-prices);
+il prezzo effettivo dipende dal contratto della sottoscrizione. Questa risorsa
+richiede una scelta esplicita prima della creazione e non è stata creata.
+
 ## Autenticazione e backend
 
 Il login usa l'applicazione Entra `Luciana-WebApp`, nel tenant aziendale
