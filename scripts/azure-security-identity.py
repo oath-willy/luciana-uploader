@@ -33,7 +33,8 @@ if __name__ == "__main__":
     if app is None:
         app = api("POST", "https://graph.microsoft.com/v1.0/applications", graph, {
             "displayName": "Luciana-WebApp", "signInAudience": "AzureADMyOrg",
-            "web": {"redirectUris": ["https://yellow-forest-0ad79d503.6.azurestaticapps.net/.auth/login/aad/callback"]},
+            "web": {"redirectUris": ["https://yellow-forest-0ad79d503.6.azurestaticapps.net/.auth/login/aad/callback"],
+                    "implicitGrantSettings": {"enableIdTokenIssuance": True, "enableAccessTokenIssuance": False}},
         })
     expires = datetime.now(timezone.utc) + timedelta(days=365)
     password = api("POST", f"https://graph.microsoft.com/v1.0/applications/{app['id']}/addPassword", graph,
