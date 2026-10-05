@@ -120,6 +120,11 @@ class McCodeLocalApiTests(unittest.TestCase):
         self.assertEqual(search.status_code, 200)
         self.assertEqual(search.json()["total"], 3)
 
+    def test_legacy_snapshot_redirect_preserves_the_secure_origin(self):
+        response = self.client.put("/api/codex/snapshot?environment=dev", json={}, follow_redirects=False)
+        self.assertEqual(response.status_code, 307)
+        self.assertEqual(response.headers["location"], "/api/mc-code/snapshot?environment=dev")
+
     def test_legacy_snapshot_settings_and_header_remain_usable(self):
         snapshot_bytes = snapshot_path("dev").read_bytes()
         settings = {key: value for key, value in os.environ.items() if not key.startswith("MC_CODE_")}

@@ -50,7 +50,10 @@ legacy_router = APIRouter()
     "/codex/{path:path}", methods=["GET", "POST", "PUT"], include_in_schema=False
 )
 def redirect_legacy_mc_code(path: str, request: Request):
-    url = request.url.replace(path=f"/api/mc-code/{path}")
+    # A relative redirect preserves the HTTPS origin when Azure terminates TLS.
+    url = f"/api/mc-code/{path}"
+    if request.url.query:
+        url += "?" + request.url.query
     return RedirectResponse(str(url), status_code=307)
 
 
