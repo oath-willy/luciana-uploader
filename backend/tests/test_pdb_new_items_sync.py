@@ -23,7 +23,9 @@ class NewItemsTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.env = patch.dict(os.environ, {
             "MC_CODE_LOCAL_DATA_DIR": str(self.root),
-            "MC_CODE_RUNTIME_DB": str(self.root / "runtime.sqlite3"),
+            "PDB_NEW_ITEMS_RUNTIME_DB": str(
+                self.root / "runtime_pdb_new_items.sqlite3"
+            ),
         })
         self.env.start()
         publish_snapshot("dev", "old", "2026-09-14", [{"company": "ACME"}], [{

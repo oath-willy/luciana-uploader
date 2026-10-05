@@ -53,16 +53,18 @@ beforeEach(() => {
     total: 1,
   });
   (fetchBrandRaw as jest.Mock).mockResolvedValue({
-    rows: [{ record_key: "id:7", brand_raw: "Acme Incorporated", change_status: "original" }],
+    rows: [{ record_key: "id:7", source_id: 7, brand_raw: "Acme Incorporated", change_status: "original" }],
     total: 1,
   });
   (updateBrandRaw as jest.Mock).mockResolvedValue({
-    row: { record_key: "id:7", brand_raw: "Acme corrected", change_status: "modified" },
-    edits_file: "pdb_brands_dictionary_edits.parquet",
+    row: { record_key: "id:7", source_id: 7, brand_raw: "Acme corrected", change_status: "modified" },
+    workspace_file: "pdb_brands_dictionary_workspace.sqlite3",
+    runtime_file: "pdb_brands_dictionary_workspace.sqlite3",
   });
   (createBrandRaw as jest.Mock).mockResolvedValue({
-    row: { record_key: "new:1", brand_raw: "Acme manual", change_status: "added" },
-    edits_file: "pdb_brands_dictionary_edits.parquet",
+    row: { record_key: "new:1", source_id: null, brand_raw: "Acme manual", change_status: "added" },
+    workspace_file: "pdb_brands_dictionary_workspace.sqlite3",
+    runtime_file: "pdb_brands_dictionary_workspace.sqlite3",
   });
 });
 

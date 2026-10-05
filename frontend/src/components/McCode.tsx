@@ -1,3 +1,4 @@
+import { backendUrl } from "../apiBaseUrl";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GridColDef, GridRowParams } from "@mui/x-data-grid";
 import {
@@ -157,7 +158,7 @@ type Bs25AiResult = {
   simulated?: boolean;
 };
 
-const backendBaseUrl = process.env.REACT_APP_BACKEND_URL || "";
+const backendBaseUrl = backendUrl || "";
 const MAX_EXTRA_COLUMNS = 12;
 const BS25_SELECTION_OUTBOX_KEY = "mc-code.bs25.selection-outbox.v1";
 const BS25_DRAFTS_KEY = "mc-code.bs25.drafts.v1";

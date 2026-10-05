@@ -19,7 +19,9 @@ class McCodeLocalApiTests(unittest.TestCase):
             os.environ,
             {
                 "MC_CODE_LOCAL_DATA_DIR": str(data_dir),
-                "MC_CODE_RUNTIME_DB": str(data_dir / "runtime.sqlite3"),
+                "PDB_NEW_ITEMS_RUNTIME_DB": str(
+                    data_dir / "runtime_pdb_new_items.sqlite3"
+                ),
                 "MC_CODE_SNAPSHOT_TOKEN": "snapshot-test-token",
                 "BS25AI_MOCK_MODE": "true",
                 "BS25_WORKER_URL": "http://vm04.test:8094",

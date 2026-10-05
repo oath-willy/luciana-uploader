@@ -9,7 +9,9 @@ from typing import Any, Dict, Literal
 import paramiko
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
+from services.app_auth import require_admin
+from services.ssh_security import verify_ssh_host
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 
@@ -29,12 +31,14 @@ CONTROL_PANEL_VMS = [
     {
         "name": "lucianavm03",
         "public_ip": "108.142.241.77",
+        "ssh_host": os.getenv("CONTROL_PANEL_VM03_HOST", "108.142.241.77"),
         "rstudio_url": "http://108.142.241.77:8787/",
     },
     {
         "name": "lucianavm04",
         "public_ip": "20.160.158.80",
-        "rstudio_url": "http://20.160.158.80:8787/",
+        "ssh_host": os.getenv("CONTROL_PANEL_VM04_HOST", "20.160.158.80"),
+        "rstudio_url": "https://rstudio-ks.westeurope.cloudapp.azure.com/",
     },
 ]
 
@@ -52,7 +56,6 @@ fi
 """
 
 SSH_USERNAME = os.getenv("CONTROL_PANEL_VM_USERNAME", "lucianauser")
-SSH_PASSWORD = os.getenv("CONTROL_PANEL_VM_PASSWORD", "")
 SSH_PRIVATE_KEY_SECRET = os.getenv(
     "CONTROL_PANEL_SSH_PRIVATE_KEY_SECRET",
     "ssh-private-key-lucianauser",
@@ -169,9 +172,9 @@ def _get_rstudio_users_via_ssh(vm: Dict[str, str]):
 
     try:
         ssh = paramiko.SSHClient()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        verify_ssh_host(ssh)
         connect_kwargs = {
-            "hostname": vm["public_ip"],
+            "hostname": vm["ssh_host"],
             "username": SSH_USERNAME,
             "timeout": 12,
             "banner_timeout": 12,
@@ -181,10 +184,8 @@ def _get_rstudio_users_via_ssh(vm: Dict[str, str]):
         }
         if ssh_key:
             connect_kwargs["pkey"] = ssh_key
-        elif SSH_PASSWORD:
-            connect_kwargs["password"] = SSH_PASSWORD
         else:
-            return None, f"Chiave SSH/password non configurata ({key_error})"
+            return None, f"Chiave SSH non configurata ({key_error})"
 
         ssh.connect(**connect_kwargs)
         _, stdout, stderr = ssh.exec_command(RSTUDIO_USERS_SCRIPT, timeout=20)
@@ -287,7 +288,7 @@ def get_control_panel_vms():
     return jsonable_encoder([_vm_status(vm) for vm in CONTROL_PANEL_VMS])
 
 
-@router.post("/control-panel/vms/{vm_name}/action")
+@router.post("/control-panel/vms/{vm_name}/action", dependencies=[Depends(require_admin)])
 def run_vm_action(vm_name: str, request: VmActionRequest):
     if vm_name not in {vm["name"] for vm in CONTROL_PANEL_VMS}:
         raise HTTPException(status_code=404, detail="VM non gestita dal control panel")

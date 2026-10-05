@@ -1,6 +1,7 @@
+import { backendUrl } from "../../apiBaseUrl";
 import { ServerGridFetchParams, ServerGridResult } from "../common/ServerDataGrid";
 
-export const backendBaseUrl = process.env.REACT_APP_BACKEND_URL || "";
+export const backendBaseUrl = backendUrl || "";
 
 export async function fetchDatabaseTable(
   tableKey: string,

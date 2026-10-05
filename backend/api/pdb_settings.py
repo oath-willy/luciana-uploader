@@ -32,7 +32,7 @@ def get_new_items_status():
 @router.post("/new-items/refresh", status_code=202)
 def refresh_new_items(background_tasks: BackgroundTasks, request: Request):
     request_id = uuid4().hex
-    requested_by = request.headers.get("x-ms-client-principal-name") or "webapp-user"
+    requested_by = getattr(request.state, "user", "webapp-user")
     if not new_items_job_store().claim(request_id, requested_by):
         raise HTTPException(status_code=409, detail="Un aggiornamento New Items e gia in corso")
     background_tasks.add_task(run_new_items_sync, request_id)
@@ -49,7 +49,7 @@ def refresh_mc_classification(background_tasks: BackgroundTasks, request: Reques
     if not pdb_ref_sync_configured():
         raise HTTPException(status_code=503, detail="Connessione SSH a lucianavm04 non configurata")
     request_id = uuid4().hex
-    requested_by = request.headers.get("x-ms-client-principal-name") or "webapp-user"
+    requested_by = getattr(request.state, "user", "webapp-user")
     if not classification_job_store().claim(request_id, requested_by):
         raise HTTPException(status_code=409, detail="Un aggiornamento MC Classification e gia in corso")
     background_tasks.add_task(run_classification_sync, request_id)
@@ -64,7 +64,7 @@ def get_brands_dictionary_status():
 @router.post("/brands-dictionary/refresh", status_code=202)
 def refresh_brands_dictionary(background_tasks: BackgroundTasks, request: Request):
     request_id = uuid4().hex
-    requested_by = request.headers.get("x-ms-client-principal-name") or "webapp-user"
+    requested_by = getattr(request.state, "user", "webapp-user")
     if not brands_dictionary_job_store().claim(request_id, requested_by):
         raise HTTPException(
             status_code=409,
@@ -87,11 +87,7 @@ def refresh_ref_pdb_dump(background_tasks: BackgroundTasks, request: Request):
             detail="Connessione SSH a lucianavm04 non configurata",
         )
     request_id = uuid4().hex
-    requested_by = (
-        request.headers.get("x-ms-client-principal-name")
-        or request.headers.get("x-ms-client-principal-id")
-        or "webapp-user"
-    )
+    requested_by = getattr(request.state, "user", "webapp-user")
     if not PdbRefSyncStore().claim(request_id, requested_by):
         raise HTTPException(
             status_code=409,

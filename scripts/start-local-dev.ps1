@@ -50,14 +50,21 @@ foreach ($setting in $settings) {
 
 $localDataDir = Join-Path $backendDir "data\codex"
 [Environment]::SetEnvironmentVariable("MC_CODE_LOCAL_DATA_DIR", $localDataDir, "Process")
-[Environment]::SetEnvironmentVariable("MC_CODE_RUNTIME_DB", (Join-Path $localDataDir "runtime.sqlite3"), "Process")
+[Environment]::SetEnvironmentVariable("PDB_NEW_ITEMS_RUNTIME_DB", (Join-Path $localDataDir "runtime_pdb_new_items.sqlite3"), "Process")
 [Environment]::SetEnvironmentVariable("PDB_REF_LOCAL_PATH", (Join-Path $localDataDir "ref_pdb_dump.parquet"), "Process")
 [Environment]::SetEnvironmentVariable("PDB_REF_STATUS_DB", (Join-Path $localDataDir "pdb-settings.sqlite3"), "Process")
 [Environment]::SetEnvironmentVariable("PDB_MC_CLASSIFICATION_LOCAL_PATH", (Join-Path $localDataDir "pdb_mc_classification.parquet"), "Process")
+[Environment]::SetEnvironmentVariable("PDB_MC_CLASSIFICATION_RUNTIME_DB", (Join-Path $localDataDir "runtime_pdb_mc_classification.sqlite3"), "Process")
 [Environment]::SetEnvironmentVariable("PDB_MC_CLASSIFICATION_STATUS_DB", (Join-Path $localDataDir "pdb-mc-classification-sync.sqlite3"), "Process")
 [Environment]::SetEnvironmentVariable("PDB_BRANDS_DICTIONARY_LOCAL_PATH", (Join-Path $localDataDir "pdb_brands_dictionary.parquet"), "Process")
+[Environment]::SetEnvironmentVariable("PDB_BRANDS_DICTIONARY_WORKSPACE_DB", (Join-Path $localDataDir "pdb_brands_dictionary_workspace.sqlite3"), "Process")
 [Environment]::SetEnvironmentVariable("PDB_BRANDS_DICTIONARY_STATUS_DB", (Join-Path $localDataDir "pdb-brands-dictionary-sync.sqlite3"), "Process")
 [Environment]::SetEnvironmentVariable("PDB_REF_VM_HOST", $Vm04Host, "Process")
+[Environment]::SetEnvironmentVariable("CONTROL_PANEL_VM04_HOST", $Vm04Host, "Process")
+[Environment]::SetEnvironmentVariable("CONTROL_PANEL_VM03_HOST", "108.142.241.77", "Process")
+[Environment]::SetEnvironmentVariable("SSH_KNOWN_HOSTS", (Join-Path $backendDir "keys\known_hosts"), "Process")
+[Environment]::SetEnvironmentVariable("FAST_TRACK_LOCAL_DIR", (Join-Path $backendDir "data\fast-track"), "Process")
+[Environment]::SetEnvironmentVariable("FAST_TRACK_AUTH_MODE", "local", "Process")
 
 if (-not $env:PDB_NEW_ITEMS_STORAGE_CONNECTION_STRING -and -not $env:PDB_NEW_ITEMS_STORAGE_SECRET) {
   $newItemsKey = az storage account keys list `
@@ -78,6 +85,7 @@ if (-not $env:PDB_NEW_ITEMS_STORAGE_CONNECTION_STRING -and -not $env:PDB_NEW_ITE
 [Environment]::SetEnvironmentVariable("REACT_APP_BACKEND_URL", "http://localhost:$BackendPort", "Process")
 [Environment]::SetEnvironmentVariable("BROWSER", "none", "Process")
 [Environment]::SetEnvironmentVariable("PORT", "$FrontendPort", "Process")
+[Environment]::SetEnvironmentVariable("HOST", "127.0.0.1", "Process")
 
 $backendOut = Join-Path $logDir "backend.out.log"
 $backendErr = Join-Path $logDir "backend.err.log"

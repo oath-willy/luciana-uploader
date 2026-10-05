@@ -1,10 +1,14 @@
 import os
 import urllib
+from dotenv import load_dotenv
 
-SQL_SERVER   = "lucianasqlserver01.database.windows.net"
-SQL_DATABASE = "luciana_db"
-SQL_USERNAME = "sqladminuser"
-SQL_PASSWORD = "UnaPasswordForte123!"
+load_dotenv()
+
+
+SQL_SERVER = os.getenv("SQL_SERVER", "")
+SQL_DATABASE = os.getenv("SQL_DATABASE", "")
+SQL_USERNAME = os.getenv("SQL_USER", "")
+SQL_PASSWORD = os.getenv("SQL_PASSWORD", "")
 
 connection_string = (
     f"Driver={{ODBC Driver 18 for SQL Server}};"
@@ -21,10 +25,6 @@ params = urllib.parse.quote_plus(connection_string)
 SQLALCHEMY_DATABASE_URL = f"mssql+pyodbc:///?odbc_connect={params}"
 
 
-
-from dotenv import load_dotenv
-
-load_dotenv()
 
 class Settings:
     AZURE_STORAGE_CONNECTION_STRING: str = os.getenv("AZURE_STORAGE_CONNECTION_STRING")

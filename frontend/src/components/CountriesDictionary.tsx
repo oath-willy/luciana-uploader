@@ -1,3 +1,4 @@
+import { backendUrl } from "../apiBaseUrl";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   DataGrid,
@@ -40,7 +41,7 @@ type DictionaryRow = {
   id_country: number | null;
 };
 
-const backendBaseUrl = process.env.REACT_APP_BACKEND_URL || "";
+const backendBaseUrl = backendUrl || "";
 const pageSizeOptions = [25, 50, 100, 500];
 
 const filterFields = ["ID", "COUNTRY RAW", "COUNTRY ISO", "USER NAME", "VALIDATED"];

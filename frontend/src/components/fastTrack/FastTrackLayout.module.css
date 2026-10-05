@@ -1,0 +1,59 @@
+.shell {
+  --fast-track-background: #0c100f;
+  --fast-track-foreground: #f4f4f2;
+}
+
+.shell .navbar {
+  --mantine-color-text: var(--fast-track-foreground);
+  --mantine-color-dimmed: #9aa09e;
+  --mantine-color-blue-light: rgba(3, 140, 127, 0.16);
+  --mantine-color-blue-light-color: #3ad0c2;
+  color: var(--fast-track-foreground);
+  background: var(--fast-track-background);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.navbar :global(.mantine-NavLink-root),
+.navbar :global(.mantine-ActionIcon-root) {
+  color: var(--fast-track-foreground);
+}
+
+.navbar :global(.mantine-NavLink-root):hover,
+.navbar :global(.mantine-ActionIcon-root):hover {
+  color: #edf060;
+  background: rgba(3, 140, 127, 0.16);
+}
+
+.navbar :global(.mantine-NavLink-root):focus-visible,
+.navbar :global(.mantine-ActionIcon-root):focus-visible {
+  outline: 2px solid #3ad0c2;
+}
+
+.navbar :global(.mantine-Code-root) {
+  color: var(--fast-track-foreground);
+  background: #141918;
+}
+
+.main {
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--fast-track-background);
+}
+
+.dashboard {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background: #0c100f;
+}
+
+.frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  flex: 1;
+  min-height: 0;
+  border: 0;
+}

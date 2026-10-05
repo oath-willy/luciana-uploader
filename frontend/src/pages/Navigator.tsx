@@ -2,13 +2,13 @@ import {
   IconHome2,
   IconSettings,
   IconLogout,
-  IconTestPipe,
   IconCode,
   IconBrandGithub,
   IconBrowser,
   IconDatabase,
   IconChevronLeft,
   IconChevronRight,
+  IconChartLine,
 } from '@tabler/icons-react';
 import {
   AppShell,
@@ -26,10 +26,8 @@ import {
   ActionIcon,
 } from '@mantine/core';
 import { useEffect, useState } from 'react';
-import { Link, Navigate, Routes, Route } from 'react-router-dom';
+import { Link, Navigate, Routes, Route, useLocation } from 'react-router-dom';
 import MantineStorageBrowser from '../components/MantineStorageBrowser';
-import RunRScript from '../components/RunRScript';
-import RunRScriptLog from '../components/RunRScriptLog';
 import PDBCodifica from '../components/PDBCodifica';
 import ProductsTest from '../components/ProductsTest';
 import ControlPanel from '../components/ControlPanel';
@@ -37,12 +35,16 @@ import CountriesDictionary from '../components/CountriesDictionary';
 import Companies from '../components/database/Companies';
 import FatherNames from '../components/database/FatherNames';
 import Brands from '../components/database/Brands';
+import McClassification from '../components/database/McClassification';
 import Countries from '../components/database/Countries';
 import Currencies from '../components/database/Currencies';
 import CountriesCurrencies from '../components/database/CountriesCurrencies';
 import McCode from '../components/McCode';
 import ItemsCode from '../components/ItemsCode';
 import PdbSettings from '../components/database/PdbSettings';
+import FastTrackDashboard from '../components/fastTrack/FastTrackDashboard';
+import FastTrackSettings from '../components/fastTrack/FastTrackSettings';
+import fastTrackLayout from '../components/fastTrack/FastTrackLayout.module.css';
 
 type UserData = {
   name: string;
@@ -65,7 +67,17 @@ const pdbSettingsStyles = {
 export default function AdminDashboardPage() {
   const [user, setUser] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [navCollapsed, setNavCollapsed] = useState(false);
+  const [standardNavCollapsed, setStandardNavCollapsed] = useState(false);
+  const [dashboardNavCollapsed, setDashboardNavCollapsed] = useState(true);
+  const { pathname } = useLocation();
+  const immersiveDashboard = process.env.REACT_APP_FAST_TRACK_ENABLED !== 'false' &&
+    ['/fast-track/dashboard/monitoring', '/fast-track/dashboard/forecast']
+      .includes(pathname.replace(/\/$/, ''));
+  const navCollapsed = immersiveDashboard ? dashboardNavCollapsed : standardNavCollapsed;
+
+  useEffect(() => {
+    setDashboardNavCollapsed(true);
+  }, [pathname]);
 
   useEffect(() => {
     const isLocal =
@@ -105,15 +117,17 @@ export default function AdminDashboardPage() {
 
   return (
     <AppShell
-      padding="xs"
+      padding={immersiveDashboard ? 0 : "xs"}
+      className={immersiveDashboard ? fastTrackLayout.shell : undefined}
       navbar={{
         width: navCollapsed ? 64 : 300,
-        breakpoint: 'sm',
+        breakpoint: immersiveDashboard ? 0 : 'sm',
         collapsed: { mobile: false },
       }}
     >
       <AppShellNavbar
         p="xs"
+        className={immersiveDashboard ? fastTrackLayout.navbar : undefined}
         style={{
           display: 'flex',
           flexDirection: 'column',
@@ -133,7 +147,10 @@ export default function AdminDashboardPage() {
 
                   <ActionIcon
                     variant="subtle"
-                    onClick={() => setNavCollapsed((v) => !v)}
+                    aria-label={navCollapsed ? "Espandi menu" : "Collassa menu"}
+                    onClick={() => immersiveDashboard
+                      ? setDashboardNavCollapsed((v) => !v)
+                      : setStandardNavCollapsed((v) => !v)}
                   >
                     {navCollapsed ? (
                       <IconChevronRight size={18} />
@@ -151,18 +168,9 @@ export default function AdminDashboardPage() {
                   <NavLink label={!navCollapsed ? "Storage Browser" : ""} leftSection={<IconBrowser size={18} />} styles={groupNavLinkStyles}>
                     {!navCollapsed && (
                       <>
-                        <NavLink label="Bronze" pl="md" component={Link} to="/navigator/file-browser-bronze" />
-                        <NavLink label="Silver" pl="md" component={Link} to="/navigator/file-browser-silver" />
-                        <NavLink label="Gold" pl="md" component={Link} to="/navigator/file-browser-gold" />
-                      </>
-                    )}
-                  </NavLink>
-
-                  <NavLink label={!navCollapsed ? "Tests" : ""} leftSection={<IconTestPipe size={18} />} styles={groupNavLinkStyles}>
-                    {!navCollapsed && (
-                      <>
-                        <NavLink label="Launch R script" pl="md" component={Link} to="/navigator/run-r-script" />
-                        <NavLink label="Launch R script - With R Log" pl="md" component={Link} to="/navigator/run-r-script-log" />
+                        <NavLink label="Bronze" pl="md" component={Link} to="/file-browser-bronze" />
+                        <NavLink label="Silver" pl="md" component={Link} to="/file-browser-silver" />
+                        <NavLink label="Gold" pl="md" component={Link} to="/file-browser-gold" />
                       </>
                     )}
                   </NavLink>
@@ -171,43 +179,55 @@ export default function AdminDashboardPage() {
                     {!navCollapsed && (
                       <>
                         <NavLink label="PDB" pl="md" styles={groupNavLinkStyles}>
-                          <NavLink label="Products" pl="lg" component={Link} to="/navigator/products" />
-                          <NavLink label="Products Test" pl="lg" component={Link} to="/navigator/products-test" />
+                          <NavLink label="Products" pl="lg" component={Link} to="/products" />
+                          <NavLink label="Products Test" pl="lg" component={Link} to="/products-test" />
                           <NavLink label="CODE TOOLS" pl="lg" styles={groupNavLinkStyles}>
-                            <NavLink label="MC CODE" pl="xl" component={Link} to="/navigator/mc-code" />
-                            <NavLink label="ITEMS CODE" pl="xl" component={Link} to="/navigator/items-code" />
+                            <NavLink label="MC CODE" pl="xl" component={Link} to="/mc-code" />
+                            <NavLink label="ITEMS CODE" pl="xl" component={Link} to="/items-code" />
                           </NavLink>
-                          <NavLink label="Companies" pl="lg" component={Link} to="/navigator/companies" />
-                          <NavLink label="Brands" pl="lg" component={Link} to="/navigator/brands" />
-                          <NavLink label="Father Names" pl="lg" component={Link} to="/navigator/father-names" />
+                          <NavLink label="Companies" pl="lg" component={Link} to="/companies" />
+                          <NavLink label="Brands" pl="lg" component={Link} to="/brands" />
+                          <NavLink label="MC Classification" pl="lg" component={Link} to="/mc-classification" />
+                          <NavLink label="Father Names" pl="lg" component={Link} to="/father-names" />
                           <NavLink
                             label="Settings"
                             pl="lg"
                             leftSection={<IconSettings size={16} />}
                             component={Link}
-                            to="/navigator/pdb-settings"
+                            to="/pdb-settings"
                             styles={pdbSettingsStyles}
                           />
                         </NavLink>
 
                         <NavLink label="Domain Tables" pl="md" styles={groupNavLinkStyles}>
-                          <NavLink label="Countries" pl="lg" component={Link} to="/navigator/countries" />
-                          <NavLink label="Currencies" pl="lg" component={Link} to="/navigator/currencies" />
-                          <NavLink label="Countries Currencies" pl="lg" component={Link} to="/navigator/countries-currencies" />
+                          <NavLink label="Countries" pl="lg" component={Link} to="/countries" />
+                          <NavLink label="Currencies" pl="lg" component={Link} to="/currencies" />
+                          <NavLink label="Countries Currencies" pl="lg" component={Link} to="/countries-currencies" />
                         </NavLink>
 
                         <NavLink label="Utilities" pl="md" styles={groupNavLinkStyles}>
-                          <NavLink label="Countries Dictionary" pl="lg" component={Link} to="/navigator/countries-dictionary" />
+                          <NavLink label="Countries Dictionary" pl="lg" component={Link} to="/countries-dictionary" />
                         </NavLink>
                       </>
                     )}
                   </NavLink>
 
+                  {process.env.REACT_APP_FAST_TRACK_ENABLED !== 'false' && (
+                    <NavLink label={!navCollapsed ? "Fast Track" : ""} leftSection={<IconChartLine size={18} />} styles={groupNavLinkStyles}>
+                      {!navCollapsed && <NavLink label="Dashboard" pl="md" styles={groupNavLinkStyles}>
+                        <NavLink label="Gold monitoring" pl="lg" component={Link} to="/fast-track/dashboard/monitoring" />
+                        <NavLink label="Forecast" pl="lg" component={Link} to="/fast-track/dashboard/forecast" />
+                        <NavLink label="Settings" pl="lg" leftSection={<IconSettings size={16} />} component={Link}
+                          to="/fast-track/dashboard/settings" styles={pdbSettingsStyles} />
+                      </NavLink>}
+                    </NavLink>
+                  )}
+
                   <NavLink
                     label={!navCollapsed ? "RStudio" : ""}
                     leftSection={<IconCode size={18} />}
                     component={Link}
-                    to="http://20.160.158.80:8787/"
+                    to="https://rstudio-ks.westeurope.cloudapp.azure.com/"
                   />
 
                   <NavLink
@@ -219,7 +239,7 @@ export default function AdminDashboardPage() {
 
                   <NavLink label={!navCollapsed ? "Settings" : ""} leftSection={<IconSettings size={18} />} styles={groupNavLinkStyles}>
                     {!navCollapsed && (
-                      <NavLink label="Control Panel" pl="md" component={Link} to="/navigator/control-panel" />
+                      <NavLink label="Control Panel" pl="md" component={Link} to="/control-panel" />
                     )}
                   </NavLink>
                 </Stack>
@@ -257,7 +277,7 @@ export default function AdminDashboardPage() {
         )}
       </AppShellNavbar>
 
-      <AppShell.Main>
+      <AppShell.Main className={immersiveDashboard ? fastTrackLayout.main : undefined}>
         <Routes>
           <Route path="/" element={<Text size="lg">Luciana Navigator</Text>} />
 
@@ -269,19 +289,24 @@ export default function AdminDashboardPage() {
           <Route path="products-test" element={<ProductsTest />} />
           <Route path="mc-code" element={<McCode />} />
           <Route path="items-code" element={<ItemsCode />} />
-          <Route path="codex" element={<Navigate to="/navigator/mc-code" replace />} />
+          <Route path="codex" element={<Navigate to="/mc-code" replace />} />
           <Route path="companies" element={<Companies />} />
           <Route path="brands" element={<Brands />} />
+          <Route path="mc-classification" element={<McClassification />} />
           <Route path="father-names" element={<FatherNames />} />
           <Route path="pdb-settings" element={<PdbSettings />} />
+          {process.env.REACT_APP_FAST_TRACK_ENABLED !== 'false' && <>
+            <Route path="fast-track/dashboard/monitoring" element={<FastTrackDashboard dashboard="gold" />} />
+            <Route path="fast-track/dashboard/forecast" element={<FastTrackDashboard dashboard="forecast" />} />
+            <Route path="fast-track/dashboard/settings" element={<FastTrackSettings />} />
+          </>}
           <Route path="countries" element={<Countries />} />
           <Route path="currencies" element={<Currencies />} />
           <Route path="countries-currencies" element={<CountriesCurrencies />} />
-          <Route path="pdb-codifica" element={<Navigate to="/navigator/products" replace />} />
+          <Route path="pdb-codifica" element={<Navigate to="/products" replace />} />
           <Route path="countries-dictionary" element={<CountriesDictionary />} />
-          <Route path="run-r-script" element={<RunRScript />} />
-          <Route path="run-r-script-log" element={<RunRScriptLog />} />
           <Route path="control-panel" element={<ControlPanel />} />
+          <Route path="*" element={<Text role="status">Pagina non disponibile.</Text>} />
         </Routes>
       </AppShell.Main>
     </AppShell>

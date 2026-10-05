@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'backend/**'
+      - 'scripts/package-backend.py'
       - '.github/workflows/luciana-backend-deploy.yml'
 
   workflow_dispatch:
@@ -27,15 +28,12 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
+          python-version: '3.11'
 
       # Costruzione dello ZIP CORRETTO
       - name: Create backend ZIP
         run: |
-          mkdir deploy
-          cp -r backend/* deploy/
-          cd deploy
-          zip -r ../backend.zip .
+          python scripts/package-backend.py backend.zip
 
       # Deploy su Azure Web App
       - name: Deploy to Azure Web App

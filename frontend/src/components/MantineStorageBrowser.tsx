@@ -1,3 +1,4 @@
+import { backendUrl } from "../apiBaseUrl";
 import {
   ActionIcon,
   Anchor,
@@ -35,7 +36,7 @@ type Props = {
   containerKey: string;
 };
 
-const backendBaseUrl = process.env.REACT_APP_BACKEND_URL || '';
+const backendBaseUrl = backendUrl || '';
 
 function joinPath(...parts: string[]) {
   return parts.filter(Boolean).join('/');

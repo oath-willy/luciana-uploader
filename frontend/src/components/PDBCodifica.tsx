@@ -1,3 +1,4 @@
+import { backendUrl } from "../apiBaseUrl";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   DataGrid,
@@ -58,7 +59,7 @@ type ProductsProps = {
   includeExtraAttributes?: boolean;
 };
 
-const backendBaseUrl = process.env.REACT_APP_BACKEND_URL || "";
+const backendBaseUrl = backendUrl || "";
 const pageSizeOptions = [25, 50, 100, 500];
 
 const baseColumns: GridColDef[] = [

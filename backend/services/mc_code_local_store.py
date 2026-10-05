@@ -5,10 +5,12 @@ import os
 import sqlite3
 import tempfile
 import threading
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Literal
+
+from filelock import FileLock
 
 from services.mc_code_settings import mc_code_setting
 
@@ -45,8 +47,47 @@ def snapshot_path(environment: McCodeEnvironmentName) -> Path:
 
 
 def runtime_path() -> Path:
+    configured = os.getenv("PDB_NEW_ITEMS_RUNTIME_DB", "").strip()
+    target = (
+        Path(configured).expanduser()
+        if configured
+        else mc_code_data_dir() / "runtime_pdb_new_items.sqlite3"
+    )
+    _migrate_legacy_runtime(target)
+    return target
+
+
+def _migrate_legacy_runtime(target: Path) -> None:
+    if target.is_file():
+        return
     configured = mc_code_setting("RUNTIME_DB").strip()
-    return Path(configured).expanduser() if configured else mc_code_data_dir() / "runtime.sqlite3"
+    candidates = [target.with_name("runtime.sqlite3")]
+    if configured:
+        candidates.append(Path(configured).expanduser())
+    legacy = next(
+        (path for path in candidates if path != target and path.is_file()),
+        None,
+    )
+    if legacy is None:
+        return
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with FileLock(str(target) + ".migration.lock", timeout=30):
+        if target.is_file():
+            return
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{target.stem}-migration-",
+            suffix=".sqlite3",
+            dir=target.parent,
+        )
+        os.close(descriptor)
+        temporary = Path(temporary_name)
+        try:
+            with closing(sqlite3.connect(legacy)) as source, closing(sqlite3.connect(temporary)) as destination:
+                source.backup(destination)
+            os.replace(temporary, target)
+        finally:
+            temporary.unlink(missing_ok=True)
 
 
 def environment_descriptors() -> list[dict[str, Any]]:

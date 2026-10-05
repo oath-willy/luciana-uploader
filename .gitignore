@@ -30,11 +30,18 @@ yarn-debug.log*
 yarn-error.log*
 .local-logs/
 backend.zip
+*.pem
+*.key
 
 # MC CODE local snapshots and durable runtime state
 backend/data/codex/*.sqlite3
 backend/data/codex/*.sqlite3-*
+backend/data/codex/*.sqlite3.lock
+backend/data/codex/*.sqllite3
+backend/data/codex/*.sqllite3-*
 backend/data/codex/*.tmp
 backend/data/codex/*.parquet
+backend/data/codex/*.parquet.lock
 backend/data/codex/.items-code-cache/
 backend/.local-ui-test*/
+backend/data/fast-track/

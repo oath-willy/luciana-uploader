@@ -1,3 +1,4 @@
+import { backendUrl } from "../../apiBaseUrl";
 import { ServerGridFetchParams, ServerGridResult } from "../common/ServerDataGrid";
 
 export type DatasetName = "new-items" | "pdb";
@@ -9,7 +10,7 @@ export type DatasetMetadata = {
   companies: string[];
   message?: string | null;
 };
-const backendBaseUrl = process.env.REACT_APP_BACKEND_URL || "";
+const backendBaseUrl = backendUrl || "";
 
 async function responseData(response: Response, message = "Impossibile caricare il dataset") {
   const data = await response.json().catch(() => null);

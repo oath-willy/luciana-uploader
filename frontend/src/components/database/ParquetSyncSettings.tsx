@@ -1,3 +1,4 @@
+import { backendUrl } from "../../apiBaseUrl";
 import { ReactNode, useCallback, useEffect, useState } from "react";
 import {
   ActionIcon, Alert, Badge, Box, Button, Card, Divider, Group, Progress,
@@ -39,7 +40,7 @@ type Props = {
   copyTargets: Array<{ key: string; label: string }>;
 };
 
-const backendBaseUrl = process.env.REACT_APP_BACKEND_URL || "";
+const backendBaseUrl = backendUrl || "";
 
 export default function ParquetSyncSettings({
   title, description, children, endpoint, actionLabel = "Recupera", successMessage,

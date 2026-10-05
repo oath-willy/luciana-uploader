@@ -14,7 +14,10 @@ from services.mc_code_pac_ai import PacAiStore, classification, sync_pac_ai, wor
 @pytest.fixture
 def setup(tmp_path, monkeypatch):
     monkeypatch.setenv("MC_CODE_LOCAL_DATA_DIR", str(tmp_path))
-    monkeypatch.setenv("MC_CODE_RUNTIME_DB", str(tmp_path / "runtime.sqlite3"))
+    monkeypatch.setenv(
+        "PDB_NEW_ITEMS_RUNTIME_DB",
+        str(tmp_path / "runtime_pdb_new_items.sqlite3"),
+    )
     monkeypatch.setenv("PDB_MC_CLASSIFICATION_LOCAL_PATH", str(tmp_path / "classification.parquet"))
     monkeypatch.setenv("PAC_AI_WORKER_URL", "http://vm.test")
     monkeypatch.setenv("PAC_AI_WORKER_TOKEN", "token")

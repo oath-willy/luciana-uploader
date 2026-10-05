@@ -1,3 +1,4 @@
+import { backendUrl } from "../apiBaseUrl";
 import { useEffect, useState, useCallback } from 'react';
 import { Anchor, Table, Text, Group, Loader, Stack, Title, ActionIcon } from '@mantine/core';
 import { ArrowLeft } from 'lucide-react';
@@ -30,7 +31,7 @@ export default function StorageBrowser() {
 
   const fetchContents = useCallback(() => {
     setLoading(true);
-    fetch(`${process.env.REACT_APP_BACKEND_URL || ''}/api/container?prefix=${path}`)
+    fetch(`${backendUrl || ''}/api/container?prefix=${path}`)
       .then(res => res.json())
       .then(data => {
         const rawFiles = data.files || [];
@@ -69,7 +70,7 @@ export default function StorageBrowser() {
     for (const file of files) {
       formData.append('file', file);
     }
-    await fetch(`${process.env.REACT_APP_BACKEND_URL || ''}/api/upload?path=${path}`, {
+    await fetch(`${backendUrl || ''}/api/upload?path=${path}`, {
       method: 'POST',
       body: formData,
     });
@@ -86,7 +87,7 @@ export default function StorageBrowser() {
 
     const fullPath = joinPath(path, name);
 
-    await fetch(`${process.env.REACT_APP_BACKEND_URL || ''}/api/delete?path=${fullPath}`, {
+    await fetch(`${backendUrl || ''}/api/delete?path=${fullPath}`, {
       method: 'DELETE',
     });
 
@@ -108,7 +109,7 @@ export default function StorageBrowser() {
     const oldPath = joinPath(path, name);
     const newPath = joinPath(path, newName);
 
-    await fetch(`${process.env.REACT_APP_BACKEND_URL || ''}/api/rename`, {
+    await fetch(`${backendUrl || ''}/api/rename`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ oldPath, newPath }),
@@ -119,7 +120,7 @@ export default function StorageBrowser() {
 
   const handleDownload = async (fullPath: string) => {
     try {
-      const response = await fetch(`${process.env.REACT_APP_BACKEND_URL || ''}/api/download?path=${fullPath}`);
+      const response = await fetch(`${backendUrl || ''}/api/download?path=${fullPath}`);
       if (!response.ok) throw new Error("Errore durante il download");
 
       const blob = await response.blob();

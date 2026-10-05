@@ -23,6 +23,9 @@ class ItemsCodeTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.environment = patch.dict(os.environ, {
             "MC_CODE_LOCAL_DATA_DIR": str(self.root),
+            "PDB_NEW_ITEMS_RUNTIME_DB": str(
+                self.root / "runtime_pdb_new_items.sqlite3"
+            ),
             "PDB_REF_LOCAL_PATH": str(self.root / "ref_pdb_dump.parquet"),
             "ITEMS_CODE_PDB_LOCAL_PATH": "",
             "ITEMS_CODE_BROWSE_CACHE_ENABLED": "false",
@@ -144,7 +147,7 @@ class ItemsCodeTests(unittest.TestCase):
         self.assertEqual(filtered["rows"][1]["father_name"], "New family")
         self.assertEqual(filtered["rows"][0]["inner_qty"], 12.25)
         self.assertEqual(self.search("new-items", company="ACME", search="new family").json()["total"], 1)
-        with closing(sqlite3.connect(self.root / "runtime.sqlite3")) as db:
+        with closing(sqlite3.connect(self.root / "runtime_pdb_new_items.sqlite3")) as db:
             saved = json.loads(db.execute("SELECT values_json FROM items_code_edits WHERE company='ACME' AND item_code='0000'").fetchone()[0])
         self.assertEqual(saved["prefix_code"], "ABC")
         self.assertIsNone(saved["father_name"])

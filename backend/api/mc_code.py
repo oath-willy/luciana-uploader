@@ -560,8 +560,4 @@ def _normalized_item_codes(item_codes: list[str]) -> list[str]:
 
 
 def _request_actor(request: Request) -> str:
-    return (
-        request.headers.get("x-ms-client-principal-name")
-        or request.headers.get("x-ms-client-principal-id")
-        or "webapp-user"
-    )
+    return getattr(request.state, "user", "webapp-user")

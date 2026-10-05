@@ -11,13 +11,15 @@ export type BrandRow = {
 
 export type BrandRawRow = {
   record_key: string;
+  source_id: number | null;
   brand_raw: string;
   change_status: "original" | "modified" | "added";
 };
 
 export type BrandRawSaveResult = {
   row: BrandRawRow;
-  edits_file: string;
+  workspace_file: string;
+  runtime_file: string;
 };
 
 async function responseData<T>(response: Response): Promise<T> {

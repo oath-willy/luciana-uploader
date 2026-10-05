@@ -18,6 +18,7 @@ from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
 
 from services.mc_code_local_store import mc_code_data_dir
+from services.ssh_security import verify_ssh_host
 
 
 REMOTE_FETCH_SCRIPT = (
@@ -308,7 +309,7 @@ def pdb_ref_sync_configured() -> bool:
 def _connect_vm04() -> paramiko.SSHClient:
     key = _load_ssh_key()
     client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    verify_ssh_host(client)
     try:
         client.connect(
             hostname=os.getenv("PDB_REF_VM_HOST", "20.160.158.80").strip(),

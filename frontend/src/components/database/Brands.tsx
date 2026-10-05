@@ -113,7 +113,7 @@ export default function Brands() {
     setSuccess("");
     try {
       const result = await updateBrandRaw(row.record_key, selectedBrand.brand, value);
-      setSuccess(`Modifica salvata in ${result.edits_file}.`);
+      setSuccess(`Modifica salvata in ${result.workspace_file}.`);
       setRefreshToken((current) => current + 1);
     } catch (err: any) {
       setError(err.message || "Salvataggio fallito");
@@ -181,7 +181,7 @@ export default function Brands() {
     try {
       const result = await createBrandRaw(selectedBrand.brand, value);
       setDialogOpen(false);
-      setSuccess(`Nuova occorrenza salvata in ${result.edits_file}.`);
+      setSuccess(`Nuova occorrenza salvata in ${result.workspace_file}.`);
       setRefreshToken((current) => current + 1);
     } catch (err: any) {
       setError(err.message || "Inserimento fallito");

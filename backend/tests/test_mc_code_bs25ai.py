@@ -52,7 +52,9 @@ class McCodeBs25AiFlowTests(unittest.TestCase):
             os.environ,
             {
                 "MC_CODE_LOCAL_DATA_DIR": str(self.data_dir),
-                "MC_CODE_RUNTIME_DB": str(self.data_dir / "runtime.sqlite3"),
+                "PDB_NEW_ITEMS_RUNTIME_DB": str(
+                    self.data_dir / "runtime_pdb_new_items.sqlite3"
+                ),
             },
         )
         self.environment_patch.start()

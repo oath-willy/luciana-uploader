@@ -9,10 +9,11 @@ riutilizzare i dati senza una migrazione. I moduli `bs25ai_worker/codex_app_serv
 si riferiscono al prodotto OpenAI Codex, non al nome della pagina.
 
 La webapp legge esclusivamente `snapshot-dev.sqlite3` / `snapshot-prod.sqlite3` e conserva
-job BS25, job BS25AI e scelte operatore in `runtime.sqlite3`. Anche l'elenco delle company e
+job BS25, job BS25AI, scelte operatore e modifiche Items Code in
+`runtime_pdb_new_items.sqlite3`. Anche l'elenco delle company e
 ricavato dalla tabella `companies` dello snapshot: nessun endpoint MC CODE interroga Databricks.
 Gli snapshot vengono validati in un file temporaneo e sostituiti con rename atomico;
-`runtime.sqlite3` non viene mai sovrascritto.
+`runtime_pdb_new_items.sqlite3` non viene mai sovrascritto.
 
 Databricks deve pubblicare un payload completo con `PUT /api/mc-code/snapshot` e header
 `X-MC-Code-Snapshot-Token`. Il backend richiede `MC_CODE_SNAPSHOT_TOKEN`; i file risultanti sono
@@ -54,6 +55,21 @@ riusa `PDB_NEW_ITEMS_STORAGE_CONNECTION_STRING`/secret oppure la Managed Identit
 Gli endpoint sono `GET /api/pdb/settings/mc-classification` e
 `POST /api/pdb/settings/mc-classification/refresh`.
 
+La pagina **PDB > MC Classification** (`/navigator/mc-classification`) legge lo stesso
+Parquet e lo combina con `runtime_pdb_mc_classification.sqlite3`. Il runtime contiene
+soltanto le righe modificate o aggiunte; una riga presente nell'overlay sostituisce quella
+sorgente con lo stesso `master_code`. Il file `pdb_mc_classification.parquet` non viene mai
+riscritto dall'editor. La posizione del runtime puo essere configurata con
+`PDB_MC_CLASSIFICATION_RUNTIME_DB`; in assenza della variabile viene creato accanto alla
+sorgente, sullo stesso volume persistente.
+
+La tabella espone ricerca e filtri per colonna, piu selezioni dedicate per `family` e
+`subfamily`. Invio salva la cella corrente; `master_code` e la chiave stabile e non e
+modificabile dopo la creazione. `POST /api/pdb/mc-classification/records` aggiunge una
+riga, `PATCH /api/pdb/mc-classification/records` ne salva una modifica, mentre metadata
+e paginazione sono disponibili su `/metadata` e `/search`. Ogni scrittura usa un lock
+tra processi e una transazione SQLite.
+
 **Recupera Brands Dictionary** scarica
 `stkeystoneresearchdev/pdb/pdb_brands_dictionary.parquet`, ne verifica dimensione e
 metadati Parquet e sostituisce atomicamente la copia in `/home/data/codex` nel backend.
@@ -62,6 +78,17 @@ conserva l'ultima copia valida. La connessione dedicata e opzionale e, se assent
 riusa `PDB_NEW_ITEMS_STORAGE_CONNECTION_STRING`/secret oppure la Managed Identity.
 Gli endpoint sono `GET /api/pdb/settings/brands-dictionary` e
 `POST /api/pdb/settings/brands-dictionary/refresh`.
+Le modifiche eseguite da **PDB > Brands** sono conservate separatamente in
+`pdb_brands_dictionary_workspace.sqlite3`, configurabile con
+`PDB_BRANDS_DICTIONARY_WORKSPACE_DB`; il Parquet sorgente resta immutato. Ogni override
+di una riga sorgente conserva `source_id` e viene applicato alla colonna `id` del Parquet:
+per questo `id` deve essere presente, intero, non nullo e univoco. Le righe aggiunte
+manualmente restano identificate da una chiave interna e hanno `source_id` nullo.
+
+I vecchi `runtime.sqlite3`, `pdb_mc_classification_edits.parquet`,
+`runtime_pdb_brands_dictionary.sqlite3` e `pdb_brands_dictionary_edits.parquet` vengono
+importati automaticamente nei nuovi runtime/workspace al primo utilizzo. I file precedenti
+restano intatti e non ricevono ulteriori scritture.
 
 La prima importazione richiede uno snapshot MC CODE con la reference canonica gia pubblicata.
 Lo script `scripts/start-local-dev.ps1` usa sempre la directory dati locale, anche quando
@@ -98,7 +125,7 @@ La pagina `Database > PDB > Settings` esegue via SSH a chiave
 dell'operazione e persistito in `/home/data/codex/pdb-settings.sqlite3`.
 
 Su Azure Web App configurare `MC_CODE_LOCAL_DATA_DIR=/home/data/codex` e
-`MC_CODE_RUNTIME_DB=/home/data/codex/runtime.sqlite3`: `/home` e il relativo volume persistente
+`PDB_NEW_ITEMS_RUNTIME_DB=/home/data/codex/runtime_pdb_new_items.sqlite3`: `/home` e il relativo volume persistente
 devono essere abilitati. In container diversi da App Service montare un volume persistente sullo
 stesso percorso. Il default sotto `backend/data/codex` serve soltanto allo sviluppo locale.
 
@@ -174,7 +201,7 @@ prima dei filtri: non vengono conservate nella cache dei dati sorgente.
 I due worker possono trattenere fino a 128 MiB aggiuntivi per questa cache, non l'intero
 Reference PDB; il limite non comprende allocazioni temporanee o il resto dell'applicazione.
 
-La tabella superiore conserva i valori modificati in `runtime.sqlite3`, tabella
+La tabella superiore conserva i valori modificati in `runtime_pdb_new_items.sqlite3`, tabella
 `items_code_edits`, con chiave `(company, item_code)`. Non usa il numero di riga del
 Parquet come chiave persistente: riordinare o recuperare la sorgente non perde le modifiche.
 Il Parquet originale e le tabelle BS25/selezioni esistenti non vengono modificati.

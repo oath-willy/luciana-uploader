@@ -1,3 +1,4 @@
+import { backendUrl } from "../apiBaseUrl";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
@@ -34,7 +35,7 @@ type VmStatus = {
   rstudio_users_message: string;
 };
 
-const backendBaseUrl = process.env.REACT_APP_BACKEND_URL || "";
+const backendBaseUrl = backendUrl || "";
 
 export default function ControlPanel() {
   const [vms, setVms] = useState<VmStatus[]>([]);
