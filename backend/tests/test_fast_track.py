@@ -21,7 +21,8 @@ class FastTrackTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
         self.env = patch.dict(os.environ, {"FAST_TRACK_LOCAL_DIR": str(self.root), "FAST_TRACK_SOURCE_USER": "wilson_sgroi",
-                                          "FAST_TRACK_ENABLED": "true", "FAST_TRACK_JOB_TIMEOUT_SECONDS": "3600"})
+                                          "FAST_TRACK_ENABLED": "true", "FAST_TRACK_JOB_TIMEOUT_SECONDS": "3600",
+                                          "FAST_TRACK_OPTIMIZATIONS_ENABLED": "false"})
         self.env.start()
         app = FastAPI()
         app.include_router(router, prefix="/api")

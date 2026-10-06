@@ -49,6 +49,7 @@ L'avvio individuale di uno script inizializza solo i dati che quello script prod
 | `FAST_TRACK_RSCRIPT` | `/opt/R/4.5.2/bin/Rscript` |
 | `FAST_TRACK_JOB_TIMEOUT_SECONDS` | `3600`, per l'esecuzione degli script |
 | `FAST_TRACK_FILE_TIMEOUT_SECONDS` | `180`, per la lettura di un file |
+| `FAST_TRACK_OPTIMIZATIONS_ENABLED` | `true`; `false` ripristina le letture dirette senza cache e riuso SSH |
 | `FAST_TRACK_AUTH_MODE` | In locale `local`, consentito solo da loopback; in Azure disabilitato finche non si configura `linked` |
 
 La connessione riusa le credenziali e le configurazioni SSH gia utilizzate per PDB e verifica
@@ -85,8 +86,44 @@ risponde 503. Le nuove richieste frontend Fast Track usano sempre il gateway rel
 
 Le risposte dei file sono private, richiedono autenticazione e consentono l'incorporamento solo dalla
 webapp configurata. I trasferimenti dei dati via SSH sono in streaming, con al massimo quattro letture
-contemporanee per worker. Non vengono copiati Parquet o Excel nel backend. I modelli `.rds`, gli script
+contemporanee per worker. Non vengono salvati Parquet o Excel su disco nel backend. I modelli `.rds`, gli script
 `.R`, i documenti e i percorsi fuori dalle directory consentite non sono esposti.
+
+## Prestazioni e compatibilita con gli aggiornamenti
+
+Le ottimizzazioni sono implementate solo in `backend/services/fast_track_performance.py` e
+nel servizio di integrazione. Non modificano HTML, JavaScript o R in `dtl_fast-track/dashboard`,
+quindi il recupero di nuovi sorgenti non le sovrascrive. L'autore puo continuare a sviluppare
+le dashboard mantenendo i punti di ingresso e il contratto dati supportato dall'integrazione.
+
+Ogni worker mantiene al massimo quattro connessioni SSH per le letture, usate in modo esclusivo.
+Solo un comando terminato e consumato completamente restituisce la connessione al pool;
+interruzioni, errori di trasporto e letture incomplete la chiudono. Alla richiesta successiva
+si scartano connessioni inattive da 60 secondi, piu vecchie di 5 minuti o non piu valide.
+Gli aggiornamenti dei sorgenti e gli script R mantengono connessioni dedicate.
+La chiave SSH viene conservata solo in memoria per 5 minuti; una nuova configurazione o un
+file chiave modificato forza una nuova lettura. Un'autenticazione rifiutata rilegge la chiave
+e riprova una sola volta, per gestire anche la rotazione del segreto Key Vault.
+La verifica della chiave host resta obbligatoria per ogni nuova connessione.
+
+La cache dati e privata al processo: massimo **32 MiB per worker**, **512 file**, massimo
+**8 MiB per file**, scadenza **5 minuti**. I file piu grandi continuano a essere trasferiti
+in streaming. Le richieste simultanee dello stesso file piccolo condividono un unico download;
+solo trasferimenti completi riusciti entrano in cache. Errori e file mancanti non sono memorizzati.
+Con i due worker attuali il limite dei contenuti in cache e 64 MiB complessivi, oltre ai buffer
+temporanei di trasferimento. Non viene creata una cache persistente sul filesystem.
+
+La chiave della cache comprende directory runtime, destinazione SSH, utente sorgente, revisione
+pubblicata e percorso. Una nuova pubblicazione utilizza automaticamente nuove voci: non riceve
+i dati della versione precedente, che resta disponibile alle pagine gia aperte. Autenticazione
+e validazione di versione/percorso avvengono prima di ogni accesso alla cache; le risposte HTTP
+restano private e rispettano le regole del gateway. La cache non e condivisa fra worker o istanze.
+
+Per annullare tutte le ottimizzazioni impostare `FAST_TRACK_OPTIMIZATIONS_ENABLED=false` e
+riavviare il backend. La pubblicazione, gli aggiornamenti e i dati originali non cambiano.
+Il numero di richieste e il lavoro nel browser restano determinati dal codice delle dashboard:
+le ottimizzazioni del backend riducono i collegamenti ripetuti, senza sostituire caricamenti
+progressivi o altre migliorie che l'autore potra implementare nel JavaScript.
 
 ## Disabilitazione e rimozione
 
@@ -96,7 +133,8 @@ nella build frontend. I dati originali e la pipeline R continuano a funzionare i
 Per rimuovere il codice, eliminare i due collegamenti Fast Track in `backend/main.py`, gli import,
 il gruppo di navigazione e le tre route in `frontend/src/pages/Navigator.tsx`. Rimuovere quindi:
 
-- `backend/api/fast_track.py`, `backend/services/fast_track.py`, `backend/services/fast_track_remote.py`;
+- `backend/api/fast_track.py`, `backend/services/fast_track.py`, `backend/services/fast_track_remote.py`,
+  `backend/services/fast_track_performance.py` e i test dedicati;
 - `frontend/src/components/fastTrack/` e i test dedicati;
 - le variabili `FAST_TRACK_*`, `REACT_APP_FAST_TRACK_ENABLED` e le due righe Fast Track nello script di avvio locale.
 

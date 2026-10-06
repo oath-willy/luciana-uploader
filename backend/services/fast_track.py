@@ -19,6 +19,7 @@ from uuid import uuid4
 
 import paramiko
 
+from services import fast_track_performance as performance
 from services.pdb_ref_sync import _load_ssh_key, pdb_ref_sync_configured
 
 FOLDERS = {"gold": "gold_monitoring_dashboard", "forecast": "forecast_dashboard"}
@@ -45,13 +46,44 @@ class PinnedHostKeyPolicy(paramiko.MissingHostKeyPolicy):
             raise paramiko.SSHException("Chiave host lucianavm04 non riconosciuta; verificare la configurazione SSH Fast Track")
 
 
+def _credential_identity():
+    path = Path(os.getenv("PDB_REF_SSH_PRIVATE_KEY_PATH", os.getenv("SSH_PRIVATE_KEY_PATH", "./keys/lucianauser_key.pem"))).expanduser()
+    try:
+        stat = path.stat()
+        stamp = (stat.st_mtime_ns, stat.st_size)
+    except OSError:
+        stamp = None
+    return (os.getenv("USE_KEYVAULT", "false"), os.getenv("KEY_VAULT_NAME", "luciana-project"),
+            os.getenv("PDB_REF_SSH_PRIVATE_KEY_SECRET", os.getenv("CONTROL_PANEL_SSH_PRIVATE_KEY_SECRET", "ssh-private-key-lucianauser")),
+            str(path.resolve()), stamp)
+
+
+def _remote_identity():
+    return (os.getenv("PDB_REF_VM_HOST", "20.160.158.80").strip(), int(os.getenv("PDB_REF_VM_PORT", "22")),
+            os.getenv("PDB_REF_VM_USERNAME", "lucianauser").strip(),
+            os.getenv("FAST_TRACK_SSH_HOST_KEY_SHA256", "").strip(), _credential_identity())
+
+
 def _connect_remote():
+    optimized = performance.optimizations_enabled()
+    # A rejected cached credential is refreshed once, so key rotation does not wait for TTL.
+    for attempt in range(2 if optimized else 1):
+        key = performance.ssh_key.get(_credential_identity(), _load_ssh_key) if optimized else _load_ssh_key()
+        try:
+            return _connect_with_key(key)
+        except paramiko.AuthenticationException:
+            performance.ssh_key.clear()
+            if not optimized or attempt:
+                raise
+
+
+def _connect_with_key(key):
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(PinnedHostKeyPolicy())
     try:
         client.connect(hostname=os.getenv("PDB_REF_VM_HOST", "20.160.158.80").strip(),
                        port=int(os.getenv("PDB_REF_VM_PORT", "22")),
-                       username=os.getenv("PDB_REF_VM_USERNAME", "lucianauser").strip(), pkey=_load_ssh_key(),
+                       username=os.getenv("PDB_REF_VM_USERNAME", "lucianauser").strip(), pkey=key,
                        timeout=20, banner_timeout=20, auth_timeout=20, look_for_keys=False, allow_agent=False)
         client.get_transport().set_keepalive(30)
         return client
@@ -192,19 +224,26 @@ def status() -> dict[str, Any]:
 
 
 def _open_remote(config: dict[str, Any]):
-    client = _connect_remote()
-    try:
-        helper = Path(__file__).with_name("fast_track_remote.py").read_bytes()
-        code = "import base64; exec(compile(base64.b64decode(" + repr(base64.b64encode(helper).decode()) + "), '<fast-track>', 'exec'))"
-        command = "sudo -n -H -u " + shlex.quote(config["source_user"]) + " -- python3 -c " + shlex.quote(code)
-        stdin, stdout, stderr = client.exec_command("cd /tmp && " + command, timeout=config["timeout"] + 60)
-        stdin.write(json.dumps(config))
-        stdin.flush()
-        stdin.channel.shutdown_write()
-        return client, stdout, stderr
-    except BaseException:
-        client.close()
-        raise
+    pooled = config["action"] == "read" and performance.optimizations_enabled()
+    # Jobs use dedicated connections. Read-only commands may retry a stale pooled session.
+    for attempt in range(2 if pooled else 1):
+        client = performance.ssh_reads.acquire(_remote_identity(), _connect_remote) if pooled else _connect_remote()
+        try:
+            helper = Path(__file__).with_name("fast_track_remote.py").read_bytes()
+            code = "import base64; exec(compile(base64.b64decode(" + repr(base64.b64encode(helper).decode()) + "), '<fast-track>', 'exec'))"
+            command = "sudo -n -H -u " + shlex.quote(config["source_user"]) + " -- python3 -c " + shlex.quote(code)
+            stdin, stdout, stderr = client.exec_command("cd /tmp && " + command, timeout=config["timeout"] + 60)
+            stdin.write(json.dumps(config))
+            stdin.flush()
+            stdin.channel.shutdown_write()
+            return client, stdout, stderr
+        except (paramiko.SSHException, EOFError, OSError):
+            client.close()
+            if not pooled or attempt:
+                raise
+        except BaseException:
+            client.close()
+            raise
 
 
 def _safe_source_path(name: str) -> PurePosixPath:
@@ -352,7 +391,7 @@ def run_job(identifier: str, kind: str, target: str):
 
 
 def publication_file(revision: str, name: str):
-    """Return a local asset or an SSH stream with size, closing the connection in every exit path."""
+    """Validate every request before using the private, versioned data cache."""
     if not REVISION.fullmatch(revision):
         raise FileNotFoundError("Versione non disponibile")
     publication = Store().meta("publication:" + revision)
@@ -377,10 +416,22 @@ def publication_file(revision: str, name: str):
         raise FileNotFoundError("File non disponibile")
     config = {**source_config(), "source_user": publication["source_user"], "action": "read", "revision": revision, "path": name,
               "timeout": int(os.getenv("FAST_TRACK_FILE_TIMEOUT_SECONDS", "180"))}
+    if performance.optimizations_enabled():
+        key = (str(data_dir().resolve()), _remote_identity(), publication["source_user"], revision, rel.as_posix())
+        return performance.files.fetch(key, lambda: _remote_file(config, rel))
+    return _remote_file(config, rel)
+
+
+def _remote_file(config: dict[str, Any], rel: PurePosixPath):
     client, stdout, stderr = _open_remote(config)
     try:
         header = json.loads(stdout.readline(4096))
         if "error" in header:
+            # A normal helper error (e.g. an optional table missing) does not break SSH.
+            # Drain the command before returning its connection; never cache the error.
+            if isinstance(client, performance.SSHLease) and not stdout.read(4096):
+                stdout.channel.recv_exit_status()
+                client.mark_complete()
             raise FileNotFoundError(header["error"])
         size = header["size"]
         if not isinstance(size, int) or not 0 <= size <= 512 * 1024 * 1024:
@@ -393,12 +444,14 @@ def publication_file(revision: str, name: str):
             remaining = size
             while remaining:
                 block = stdout.read(min(512 * 1024, remaining))
-                if not block:
+                if not block or len(block) > remaining:
                     raise IOError("Trasferimento dati incompleto")
                 remaining -= len(block)
                 yield block
             if stdout.channel.recv_exit_status() != 0:
                 raise IOError("Lettura dati non completata")
+            if isinstance(client, performance.SSHLease):
+                client.mark_complete()
         finally:
             client.close()
     mime = {".json": "application/json", ".parquet": "application/octet-stream",
